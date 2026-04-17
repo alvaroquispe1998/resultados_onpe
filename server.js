@@ -15,7 +15,11 @@ function updateHistory(currentData, actasPercent) {
   lastActasPercent = actasPercent;
 
   const snapshot = {
-    timestamp: new Date().toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' }),
+    timestamp: new Date().toLocaleTimeString("es-PE", { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      timeZone: "America/Lima" 
+    }),
     actasPercent: actasPercent,
     results: currentData.map(item => ({
       name: item.nombreAgrupacionPolitica,
@@ -649,7 +653,7 @@ const server = http.createServer(async (req, res) => {
       res.end(
         JSON.stringify({
           success: true,
-          dashboardUpdatedAt: new Date().toLocaleString("es-PE"),
+          dashboardUpdatedAt: new Date().toLocaleString("es-PE", { timeZone: "America/Lima" }),
           onpeUpdatedAt: summary.fechaActualizacion,
           top3,
           others,
