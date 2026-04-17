@@ -645,7 +645,6 @@ function htmlPage() {
         if (!itemData && s.summary && s.summary.detalleVotosProcessed) {
            itemData = s.summary.detalleVotosProcessed.find(d => d.nombreAgrupacionPolitica === itemName);
         }
-        // Compatibilidad con formato anterior de detalleVotos
         if (!itemData && s.summary && s.summary.detalleVotos) {
            const d = s.summary.detalleVotos.find(d => d.descDetalle === itemName);
            if (d) itemData = { votos: parseInt(d.totalVotos?.replace(/,/g, '') || 0) };
@@ -658,13 +657,29 @@ function htmlPage() {
         };
       }).filter(s => s.candidate);
 
-      // Añadir el punto actual real
-      if (currentItem) {
-        filtered.push({
-          time: "Ahora",
-          actas: currentDataGlobal.actasContabilizadas,
-          candidate: { votos: currentItem.totalVotosValidos }
-        });
+      const lastSnapshot = filtered[filtered.length - 1];
+      
+      // SOLO añadir "Ahora" si hay un cambio REAL respecto al último snapshot
+      if (currentItem && lastSnapshot) {
+          const currentVotos = currentItem.totalVotosValidos;
+          const currentActas = currentDataGlobal.actasContabilizadas;
+          
+          if (currentVotos !== lastSnapshot.candidate.votos || currentActas !== lastSnapshot.actas) {
+              // Extraer solo la hora de la actualización del sistema
+              const systemTimeStr = currentDataGlobal.dashboardUpdatedAt.split(', ')[1] || "Recién";
+              filtered.push({
+                time: systemTimeStr,
+                actas: currentActas,
+                candidate: { votos: currentVotos }
+              });
+          }
+      } else if (currentItem && filtered.length === 0) {
+         const systemTimeStr = currentDataGlobal.dashboardUpdatedAt.split(', ')[1] || "Recién";
+         filtered.push({
+            time: systemTimeStr,
+            actas: currentDataGlobal.actasContabilizadas,
+            candidate: { votos: currentItem.totalVotosValidos }
+          });
       }
 
       const labels = filtered.map(s => s.time);
@@ -674,7 +689,8 @@ function htmlPage() {
         borderColor: '#0ea5e9',
         backgroundColor: 'rgba(14, 165, 233, 0.1)',
         fill: true,
-        tension: 0.3
+        tension: 0.2,
+        cubicInterpolationMode: 'monotone'
       }];
 
       initChart(labels, datasets);
@@ -701,40 +717,80 @@ function htmlPage() {
       const modal = document.getElementById("history-modal");
       const title = document.getElementById("modal-candidate-name");
       const body = document.getElementById("history-body");
-      title.textContent = "Comparativa de Candidatos";
+      title.textContent = "Momentum: Votos Ganados por Actualización";
       
       const datasets = Array.from(selectedCandidates).map((name, idx) => {
-        const data = rawHistory.map(s => {
+        // En comparativa, graficamos los INCREMENTOS (+ votos) para que sea útil
+        const data = rawHistory.map((s, i) => {
           let c = s.results.find(r => r.name === name);
           if (!c && s.summary && s.summary.detalleVotosProcessed) {
             c = s.summary.detalleVotosProcessed.find(d => d.nombreAgrupacionPolitica === name);
           }
-           if (!c && s.summary && s.summary.detalleVotos) {
+          if (!c && s.summary && s.summary.detalleVotos) {
             const d = s.summary.detalleVotos.find(d => d.descDetalle === name);
             if (d) c = { votos: parseInt(d.totalVotos?.replace(/,/g, '') || 0) };
           }
-          return c ? (c.votos || c.totalVotosValidos) : null;
+          
+          if (!c) return null;
+          const currentVotos = c.votos || c.totalVotosValidos;
+          
+          // Calcular delta respecto al anterior
+          if (i === 0) return 0;
+          const prevSnapshot = rawHistory[i-1];
+          let prevC = prevSnapshot.results.find(r => r.name === name);
+          if (!prevC && prevSnapshot.summary && prevSnapshot.summary.detalleVotosProcessed) {
+            prevC = prevSnapshot.summary.detalleVotosProcessed.find(d => d.nombreAgrupacionPolitica === name);
+          }
+          const prevVotos = prevC ? (prevC.votos || prevC.totalVotosValidos) : currentVotos;
+          return currentVotos - prevVotos;
         });
-        return { label: name, data, borderColor: getChartColors(idx), tension: 0.3, fill: false };
+
+        return { 
+          label: name, 
+          data, 
+          borderColor: getChartColors(idx), 
+          backgroundColor: getChartColors(idx) + '22',
+          tension: 0.2, 
+          cubicInterpolationMode: 'monotone',
+          fill: true,
+          pointRadius: 4
+        };
       });
 
-      initChart(rawHistory.map(s => s.timestamp), datasets);
-      body.innerHTML = \`<tr><td colspan="4" style="text-align:center; color:#94a3b8; padding:40px;">Usa el gráfico para ver el momentum</td></tr>\`;
+      initChart(rawHistory.map(s => s.timestamp), datasets, "Nuevos Votos");
+      body.innerHTML = \`<tr><td colspan="4" style="text-align:center; color:#94a3b8; padding:40px;">El gráfico muestra cuántos votos ganó cada candidato en cada tramo de la historia.</td></tr>\`;
       modal.style.display = "flex";
     }
 
     function getChartColors(i) { return ['#0ea5e9', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'][i % 6]; }
 
-    function initChart(labels, datasets) {
+    function initChart(labels, datasets, yLabel = "Votos Totales") {
       const ctx = document.getElementById('historyChart').getContext('2d');
       myChart = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets },
         options: {
           responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { family: 'Outfit', size: 11 } } } },
+          interaction: { intersect: false, mode: 'index' },
+          plugins: { 
+            legend: { position: 'bottom', labels: { boxWidth: 12, font: { family: 'Outfit', size: 11, weight: '600' } } },
+            tooltip: {
+                backgroundColor: '#0f172a',
+                titleFont: { family: 'Outfit', size: 13 },
+                bodyFont: { family: 'Outfit', size: 12 },
+                padding: 12,
+                cornerRadius: 10,
+                callbacks: {
+                    label: (context) => \` \${context.dataset.label}: \${formatNumber(context.parsed.y)} \${yLabel === "Nuevos Votos" ? 'votos nuevos' : ''}\`
+                }
+            }
+          },
           scales: {
-            y: { ticks: { callback: v => formatNumber(v), font: { family: 'Outfit' } } },
+            y: { 
+                beginAtZero: yLabel === "Nuevos Votos",
+                ticks: { callback: v => formatNumber(v), font: { family: 'Outfit' } },
+                title: { display: true, text: yLabel, font: { family: 'Outfit', weight: 'bold' } }
+            },
             x: { ticks: { font: { family: 'Outfit' } } }
           }
         }
