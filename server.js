@@ -897,17 +897,19 @@ function htmlPage() {
     function renderPresidencial(json) {
       const cardsCont = document.getElementById("cards-container");
       const listCont = document.getElementById("list-container");
+      if (!cardsCont || !listCont) return;
 
-      cardsCont.innerHTML = json.top3.map((item, index) => {
-        const rankLabels = ["PRIMER LUGAR", "SEGUNDO LUGAR", "TERCER LUGAR"];
+      const top3Html = json.top3.map((item, index) => {
+        const rankClass = "rank-" + (index + 1);
+        const rankLabel = ["PRIMER LUGAR", "SEGUNDO LUGAR", "TERCER LUGAR"][index];
         const vsLabel = index === 1 ? "1°" : "2°";
         const isSelected = selectedCandidates.has(item.nombreAgrupacionPolitica);
-        const incrementalHtml = item.incremental > 0 ? \`<div class="incremental-tag">+\${formatNumber(item.incremental)} nuevos votos</div>\` : '';
+        const incrementalHtml = (item.incremental > 0) ? \`<div class="incremental-tag">+\${formatNumber(item.incremental)} nuevos votos</div>\` : '';
         
         return \`
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-              <div class="rank rank-\${index + 1}">\${rankLabels[index]}</div>
+              <div class="rank \${rankClass}">\${rankLabel}</div>
               <input type="checkbox" class="custom-chk" \${isSelected ? 'checked' : ''} onchange="toggleCandidate('\${escapeHtml(item.nombreAgrupacionPolitica)}', this.checked)">
             </div>
             <div class="party-name">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
@@ -921,17 +923,18 @@ function htmlPage() {
               \${index === 0 ? '🥇 Ganando actualmente' : '📉 ' + formatDiff(item.diferenciaConAnterior) + ' vs ' + vsLabel}
             </div>
             <button class="history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">📈 Evolución Individual</button>
-          </div>
-        \`;
+          </div>\`;
       }).join("");
+      cardsCont.innerHTML = top3Html;
 
-      listCont.innerHTML = json.others.map((item, index) => {
+      const othersHtml = json.others.map((item, index) => {
         const isSelected = selectedCandidates.has(item.nombreAgrupacionPolitica);
-        const incHtml = item.incremental > 0 ? \`<div class="list-incremental">+\${formatNumber(item.incremental)}</div>\` : '';
+        const incHtml = (item.incremental > 0) ? \`<div class="list-incremental">+\${formatNumber(item.incremental)}</div>\` : '';
+        const rank = index + 4;
         return \`
           <div class="list-item">
             <div class="chk-col"><input type="checkbox" class="custom-chk" \${isSelected ? 'checked' : ''} onchange="toggleCandidate('\${escapeHtml(item.nombreAgrupacionPolitica)}', this.checked)"></div>
-            <div class="list-rank">#\${index + 4}</div>
+            <div class="list-rank">#\${rank}</div>
             <div class="list-party">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
             <div class="list-candidate">\${escapeHtml(item.nombreCandidato || "---")}</div>
             <div class="list-votes">
@@ -939,9 +942,9 @@ function htmlPage() {
               \${incHtml}
             </div>
             <div class="list-btn-col"><button class="list-history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">📈</button></div>
-          </div>
-        \`;
+          </div>\`;
       }).join("");
+      listCont.innerHTML = othersHtml;
     }
 
     function renderResumen(json) {
