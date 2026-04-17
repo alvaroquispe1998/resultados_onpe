@@ -441,8 +441,13 @@ function htmlPage() {
     .list-rank { color: #94a3b8; font-weight: 600; font-size: 14px; }
     .list-party { font-weight: 700; color: #334155; font-size: 15px; }
     .list-candidate { color: #64748b; font-size: 14px; }
-    .list-votes { font-weight: 700; text-align: right; color: #0f172a; }
-    .list-incremental { font-size: 12px; color: var(--emerald); font-weight: 700; text-align: right; }
+    .list-votes { 
+      font-weight: 700; 
+      text-align: right; 
+      color: #0f172a; 
+      padding-right: 20px; 
+    }
+    .list-incremental { font-size: 12px; color: var(--emerald); font-weight: 700; text-align: right; padding-right: 20px; }
 
     /* Resumen View Styles */
     .resumen-grid {
@@ -493,10 +498,6 @@ function htmlPage() {
         <div class="title-group">
           <h1>Dashboard Electoral ONPE</h1>
           <div style="display: flex; gap: 16px; margin-top: 8px;">
-            <select id="view-selector" class="view-selector" onchange="switchView(this.value)">
-              <option value="presidencial">Vista Presidencial</option>
-              <option value="resumen">Resumen General</option>
-            </select>
             <button onclick="loadData()">Actualizar</button>
           </div>
           <div style="display: flex; gap: 20px; flex-wrap: wrap;">
@@ -513,9 +514,7 @@ function htmlPage() {
         </div>
         <div class="progress-bar-bg"><div id="progress-fill" class="progress-bar-fill"></div></div>
       </div>
-    </header>
-
-    <!-- Presidencial View -->
+    </header>    <!-- Presidencial View -->
     <div id="view-presidencial" class="view-content active">
       <div id="cards-container" class="grid"></div>
       <div class="others-section">
@@ -526,22 +525,7 @@ function htmlPage() {
           <div class="loading" style="padding: 40px; text-align: center;">Cargando lista...</div>
         </div>
       </div>
-    </div>
-
-    <!-- Resumen View -->
-    <div id="view-resumen" class="view-content">
-      <div id="resumen-cards-container" class="grid"></div>
-      <div class="others-section">
-        <div class="section-header">
-          <h2>Detalle de Votos</h2>
-        </div>
-        <div id="resumen-list-container" class="list-container"></div>
-      </div>
-      <div class="chart-card" style="margin-top: 40px;">
-         <h3 style="margin-top: 0;">Distribución Global</h3>
-         <canvas id="resumenChart" style="max-height: 400px;"></canvas>
-      </div>
-    </div>
+    </div>/div>
   </div>
 
   <div id="compare-bar" class="compare-bar">
