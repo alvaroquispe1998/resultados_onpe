@@ -758,7 +758,60 @@ function htmlPage() {
       });
 
       initChart(rawHistory.map(s => s.timestamp), datasets, "Nuevos Votos");
-      body.innerHTML = \`<tr><td colspan="4" style="text-align:center; color:#94a3b8; padding:40px;">El gráfico muestra cuántos votos ganó cada candidato en cada tramo de la historia.</td></tr>\`;
+      
+      // ANÁLISIS DE BRECHAS (INTERESANTE)
+      let summaryHtml = "";
+      if (selectedCandidates.size >= 2) {
+          const sortedSelected = Array.from(selectedCandidates).map(name => {
+              const c = allResults.find(r => r.nombreAgrupacionPolitica === name) || 
+                        allSummary.find(r => r.nombreAgrupacionPolitica === name);
+              return { name, votos: c ? c.totalVotosValidos : 0 };
+          }).sort((a,b) => b.votos - a.votos);
+
+          const c1 = sortedSelected[0];
+          const c2 = sortedSelected[1];
+          const gapActual = c1.votos - c2.votos;
+
+          // Buscar brecha en el snapshot anterior
+          const lastSnap = rawHistory[rawHistory.length - 1];
+          const prevSnap = rawHistory[rawHistory.length - 2];
+          
+          if (lastSnap && prevSnap) {
+              const getVotos = (snap, name) => {
+                  let c = snap.results.find(r => r.name === name);
+                  if (!c && snap.summary && snap.summary.detalleVotosProcessed) {
+                      c = snap.summary.detalleVotosProcessed.find(d => d.nombreAgrupacionPolitica === name);
+                  }
+                  return c ? (c.votos || c.totalVotosValidos) : 0;
+              };
+
+              const gapSnapshot = getVotos(lastSnap, c1.name) - getVotos(lastSnap, c2.name);
+              const gapAnterior = getVotos(prevSnap, c1.name) - getVotos(prevSnap, c2.name);
+              const diffBrecha = gapSnapshot - gapAnterior;
+
+              if (diffBrecha > 0) {
+                  summaryHtml = `<div style="background: rgba(14, 165, 233, 0.1); padding: 16px; border-radius: 12px; border-left: 4px solid var(--accent); margin-top: 20px;">
+                    <strong style="color: var(--accent); display: block; margin-bottom: 4px;">🎯 ANÁLISIS DE BRECHA</strong>
+                    <span style="font-size: 15px; color: #334155;">
+                        <b>${c1.name}</b> estiró su ventaja sobre <b>${c2.name}</b> por <b>${formatNumber(diffBrecha)}</b> votos en el último tramo. 
+                        La distancia actual es de <b>${formatNumber(gapActual)}</b> votos.
+                    </span>
+                  </div>`;
+              } else if (diffBrecha < 0) {
+                  summaryHtml = `<div style="background: rgba(16, 185, 129, 0.1); padding: 16px; border-radius: 12px; border-left: 4px solid var(--emerald); margin-top: 20px;">
+                    <strong style="color: var(--emerald); display: block; margin-bottom: 4px;">⚡ RECORTE DE DISTANCIA</strong>
+                    <span style="font-size: 15px; color: #334155;">
+                        <b>${c2.name}</b> acortó la brecha con <b>${c1.name}</b> en <b>${formatNumber(Math.abs(diffBrecha))}</b> votos. 
+                        La distancia actual se redujo a <b>${formatNumber(gapActual)}</b> votos.
+                    </span>
+                  </div>`;
+              } else {
+                  summaryHtml = `<p style="text-align:center; color:#64748b; margin-top:20px;">La brecha entre los líderes se mantiene estable (diferencia de ${formatNumber(gapActual)} votos).</p>`;
+              }
+          }
+      }
+
+      body.innerHTML = summaryHtml || `<p style="text-align:center; color:#94a3b8; padding:40px;">El gráfico muestra cuántos votos ganó cada candidato en cada tramo de la historia.</p>`;
       modal.style.display = "flex";
     }
 
