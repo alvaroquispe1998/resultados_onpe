@@ -9,12 +9,13 @@ const HISTORY_FILE = "history.json";
 // Almacén de historial en memoria
 let historySnapshots = [];
 let lastActasPercent = -1;
+let lastTotalVotes = -1;
 
-function updateHistory(currentData, actasPercent) {
-  // Solo guardamos si el porcentaje de actas ha cambiado
-  if (actasPercent === lastActasPercent) return;
-
-  lastActasPercent = actasPercent;
+function updateHistory(currentData, actasPercent, summaryData) {
+  const totalVotes = currentData.reduce((acc, item) => acc + (item.totalVotosValidos || 0), 0);
+  
+  // Si no hay cambios en nada, no hacer nada
+  if (actasPercent === lastActasPercent && totalVotes === lastTotalVotes) return;
 
   const snapshot = {
     timestamp: new Date().toLocaleTimeString("es-PE", { 
@@ -23,6 +24,8 @@ function updateHistory(currentData, actasPercent) {
       timeZone: "America/Lima" 
     }),
     actasPercent: actasPercent,
+    totalVotes: totalVotes,
+    summary: summaryData, // Guardar también el resumen para sus incrementales
     results: currentData.map(item => ({
       name: item.nombreAgrupacionPolitica,
       votos: item.totalVotosValidos,
@@ -31,12 +34,18 @@ function updateHistory(currentData, actasPercent) {
     }))
   };
 
-  historySnapshots.push(snapshot);
-  
-  // Limitar a los últimos 1000 cambios (aumentado para persistencia histórica)
-  if (historySnapshots.length > 1000) historySnapshots.shift();
+  if (actasPercent === lastActasPercent && totalVotes > lastTotalVotes && historySnapshots.length > 0) {
+    historySnapshots[historySnapshots.length - 1] = snapshot;
+  } else {
+    historySnapshots.push(snapshot);
+  }
 
-  // Guardar en archivo
+  lastActasPercent = actasPercent;
+  lastTotalVotes = totalVotes;
+
+  
+  if (historySnapshots.length > 2000) historySnapshots.shift();
+
   try {
     fs.writeFileSync(HISTORY_FILE, JSON.stringify(historySnapshots), "utf-8");
   } catch (err) {
@@ -50,7 +59,9 @@ try {
     const data = fs.readFileSync(HISTORY_FILE, "utf-8");
     historySnapshots = JSON.parse(data);
     if (historySnapshots.length > 0) {
-      lastActasPercent = historySnapshots[historySnapshots.length - 1].actasPercent;
+      const last = historySnapshots[historySnapshots.length - 1];
+      lastActasPercent = last.actasPercent;
+      lastTotalVotes = last.totalVotes || -1;
       console.log(`Historial cargado: ${historySnapshots.length} capturas.`);
     }
   }
@@ -144,6 +155,7 @@ function htmlPage() {
       --text: #0f172a;
       --text-muted: #64748b;
       --accent: #0ea5e9;
+      --emerald: #10b981;
       --gold: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
       --silver: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
       --bronze: linear-gradient(135deg, #d97706 0%, #92400e 100%);
@@ -166,11 +178,11 @@ function htmlPage() {
     .wrap {
       max-width: 1200px;
       margin: 0 auto;
-      padding: 60px 20px;
+      padding: 40px 20px;
     }
 
     header {
-      margin-bottom: 50px;
+      margin-bottom: 40px;
     }
 
     .header-top {
@@ -182,13 +194,28 @@ function htmlPage() {
       margin-bottom: 30px;
     }
 
-    h1 {
+    .title-group h1 {
       margin: 0;
-      font-size: 36px;
+      font-size: 32px;
       font-weight: 800;
       letter-spacing: -0.025em;
       color: #1e293b;
     }
+
+    .view-selector {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      padding: 8px 16px;
+      border-radius: 12px;
+      font-family: inherit;
+      font-weight: 600;
+      color: #475569;
+      outline: none;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      transition: all 0.2s;
+    }
+    .view-selector:focus { border-color: var(--accent); ring: 2px solid var(--accent); }
 
     .progress-container {
       background: #f1f5f9;
@@ -221,10 +248,16 @@ function htmlPage() {
     }
 
     .status {
-      font-size: 14px;
+      font-size: 13px;
       color: var(--text-muted);
       margin-top: 4px;
     }
+
+    /* Views */
+    .view-content { display: none; margin-top: 40px; }
+    .view-content.active { display: block; animation: fadeIn 0.4s ease-out; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
     .grid {
       display: grid;
@@ -273,16 +306,10 @@ function htmlPage() {
       line-height: 1.3;
     }
 
-    .candidate-name {
-      color: var(--text-muted);
-      font-size: 15px;
-      margin-bottom: 28px;
-    }
-
     .votos-value {
       font-size: 36px;
       font-weight: 800;
-      margin-bottom: 8px;
+      margin-bottom: 4px;
       color: #0f172a;
       display: flex;
       align-items: baseline;
@@ -295,8 +322,19 @@ function htmlPage() {
       font-weight: 400;
     }
 
+    .incremental-tag {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--emerald);
+      background: rgba(16, 185, 129, 0.1);
+      padding: 2px 8px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      display: inline-block;
+    }
+
     .card-footer {
-      margin-top: 28px;
+      margin-top: 20px;
       padding-top: 24px;
       border-top: 1px solid #f1f5f9;
       display: grid;
@@ -373,13 +411,14 @@ function htmlPage() {
     }
     .history-btn:hover { background: #f1f5f9; color: var(--accent); border-color: var(--accent); }
 
-    /* Estilos de Lista */
-    .others-section h2 {
-      font-size: 22px;
+    /* Section Headers */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       margin-bottom: 24px;
-      font-weight: 800;
-      color: #1e293b;
     }
+    .section-header h2 { font-size: 22px; margin: 0; font-weight: 800; color: #1e293b; }
 
     .list-container {
       background: #ffffff;
@@ -392,7 +431,7 @@ function htmlPage() {
     .list-item {
       display: grid;
       grid-template-columns: 40px 60px 2fr 1.5fr 1fr 120px;
-      padding: 20px 24px;
+      padding: 16px 24px;
       align-items: center;
       border-bottom: 1px solid #f1f5f9;
     }
@@ -400,85 +439,71 @@ function htmlPage() {
     .list-item:hover { background: #f8fafc; }
 
     .list-rank { color: #94a3b8; font-weight: 600; font-size: 14px; }
-    .list-party { font-weight: 700; color: #334155; }
+    .list-party { font-weight: 700; color: #334155; font-size: 15px; }
     .list-candidate { color: #64748b; font-size: 14px; }
     .list-votes { font-weight: 700; text-align: right; color: #0f172a; }
-    .list-btn-col { text-align: right; }
+    .list-incremental { font-size: 12px; color: var(--emerald); font-weight: 700; text-align: right; }
 
-    .list-history-btn {
-      background: #f1f5f9;
-      border: 1px solid #e2e8f0;
-      color: #64748b;
-      padding: 6px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 600;
+    /* Resumen View Styles */
+    .resumen-grid {
+      display: grid; grid-template-columns: 1fr 2fr; gap: 32px;
     }
-    .list-history-btn:hover { color: var(--accent); border-color: var(--accent); background: #fff; }
+    .resumen-stats { display: flex; flex-direction: column; gap: 20px; }
+    .stat-card {
+      background: white; border-radius: 20px; padding: 24px; border: 1px solid #e2e8f0;
+    }
+    .stat-card .label { font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 600; }
+    .stat-card .value { font-size: 28px; font-weight: 800; color: #0f172a; }
+
+    .chart-card {
+      background: white; border-radius: 24px; padding: 32px; border: 1px solid #e2e8f0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
 
     button {
-      background: #0f172a;
-      color: white;
-      border: 0;
-      padding: 12px 24px;
-      border-radius: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      font-family: inherit;
-      transition: opacity 0.2s;
+      background: #0f172a; color: white; border: 0; padding: 12px 24px; border-radius: 12px;
+      font-weight: 700; cursor: pointer; font-family: inherit; transition: opacity 0.2s;
     }
     button:hover { opacity: 0.9; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    @keyframes blink {
-      0% { opacity: 1; }
-      50% { opacity: 0.2; transform: scale(1.1); color: var(--accent); }
-      100% { opacity: 1; transform: scale(1); }
-    }
     .blink { animation: blink 0.8s ease-in-out 3; }
+    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.2; color: var(--accent); } 100% { opacity: 1; } }
 
     .compare-bar {
-      position: fixed;
-      bottom: 30px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #0f172a;
-      color: white;
-      padding: 16px 32px;
-      border-radius: 99px;
-      display: none;
-      align-items: center;
-      gap: 24px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-      z-index: 900;
-      animation: slideUp 0.3s ease-out;
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+      background: #0f172a; color: white; padding: 16px 32px; border-radius: 99px;
+      display: none; align-items: center; gap: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      z-index: 900; animation: slideUp 0.3s ease-out;
     }
     @keyframes slideUp { from { bottom: -100px; opacity: 0; } to { bottom: 30px; opacity: 1; } }
 
-    .chk-col { width: 30px; display: flex; align-items: center; justify-content: center; }
     .custom-chk { 
       width: 20px; height: 20px; cursor: pointer; border-radius: 6px; border: 2px solid #e2e8f0; 
       appearance: none; transition: all 0.2s; background: white; 
     }
     .custom-chk:checked { background: var(--accent); border-color: var(--accent); }
     .custom-chk:checked::before { content: '✓'; color: white; display: block; text-align: center; font-size: 14px; font-weight: 800; }
-
-    .chart-container { width: 100%; height: 260px; margin-bottom: 30px; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <div class="header-top">
-        <div>
-          <h1>Resultados Presidenciales ONPE</h1>
+        <div class="title-group">
+          <h1>Dashboard Electoral ONPE</h1>
+          <div style="display: flex; gap: 16px; margin-top: 8px;">
+            <select id="view-selector" class="view-selector" onchange="switchView(this.value)">
+              <option value="presidencial">Vista Presidencial</option>
+              <option value="resumen">Resumen General</option>
+            </select>
+            <button onclick="loadData()">Actualizar</button>
+          </div>
           <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-            <div id="onpe-update" class="status">OFICIAL: ...</div>
-            <div id="dashboard-update" class="status">VISTA: ...</div>
+            <div id="onpe-update" class="status">OFICIAL ONPE: ...</div>
+            <div id="dashboard-update" class="status">VISTA SISTEMA: ...</div>
           </div>
         </div>
-        <button onclick="loadData()">Actualizar</button>
       </div>
 
       <div class="progress-container">
@@ -490,12 +515,31 @@ function htmlPage() {
       </div>
     </header>
 
-    <div id="cards-container" class="grid"></div>
+    <!-- Presidencial View -->
+    <div id="view-presidencial" class="view-content active">
+      <div id="cards-container" class="grid"></div>
+      <div class="others-section">
+        <div class="section-header">
+          <h2>Otros Resultados</h2>
+        </div>
+        <div id="list-container" class="list-container">
+          <div class="loading" style="padding: 40px; text-align: center;">Cargando lista...</div>
+        </div>
+      </div>
+    </div>
 
-    <div class="others-section">
-      <h2>Otros Resultados</h2>
-      <div id="list-container" class="list-container">
-        <div class="loading">Cargando lista...</div>
+    <!-- Resumen View -->
+    <div id="view-resumen" class="view-content">
+      <div id="resumen-cards-container" class="grid"></div>
+      <div class="others-section">
+        <div class="section-header">
+          <h2>Detalle de Votos</h2>
+        </div>
+        <div id="resumen-list-container" class="list-container"></div>
+      </div>
+      <div class="chart-card" style="margin-top: 40px;">
+         <h3 style="margin-top: 0;">Distribución Global</h3>
+         <canvas id="resumenChart" style="max-height: 400px;"></canvas>
       </div>
     </div>
   </div>
@@ -516,7 +560,7 @@ function htmlPage() {
         <div class="close-modal" onclick="closeModal()">&times;</div>
       </div>
       <div class="modal-body">
-        <div class="chart-container">
+        <div style="height: 300px; margin-bottom: 30px;">
           <canvas id="historyChart"></canvas>
         </div>
         <table class="history-table">
@@ -536,43 +580,43 @@ function htmlPage() {
 
   <script>
     let rawHistory = [];
+    let currentDataGlobal = null;
     let selectedCandidates = new Set();
     let myChart = null;
+    let resumenChart = null;
     let lastKnownActas = -1;
+    let currentView = 'presidencial';
 
-    function formatNumber(value) { return new Intl.NumberFormat("es-PE").format(value || 0); }
-
-    function formatDiff(value) {
-      if (value === 0) return "Líder";
-      const sign = value > 0 ? "+" : "";
-      return sign + formatNumber(value);
-    }
-
+    function formatNumber(v) { return new Intl.NumberFormat("es-PE").format(v || 0); }
+    function formatDiff(v) { return (v >= 0 ? "+" : "") + formatNumber(v); }
+    
     function formatOnpeDate(ts) {
       if (!ts) return "---";
-      const date = new Date(ts);
-      return date.toLocaleString("es-PE", { 
+      const d = new Date(ts);
+      return d.toLocaleString("es-PE", { 
         day: '2-digit', month: '2-digit', year: 'numeric',
         hour: '2-digit', minute: '2-digit', second: '2-digit'
       });
     }
 
-    function escapeHtml(text) {
-      return String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    function escapeHtml(t) { return String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
+
+    function switchView(view) {
+      currentView = view;
+      document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
+      document.getElementById('view-' + view).classList.add('active');
+      if (currentDataGlobal) renderUI(currentDataGlobal);
     }
 
     function toggleCandidate(name, checked) {
       if (checked) selectedCandidates.add(name);
       else selectedCandidates.delete(name);
-      
       const bar = document.getElementById("compare-bar");
       const label = document.getElementById("compare-count");
       if (selectedCandidates.size > 0) {
         bar.style.display = "flex";
         label.textContent = \`\${selectedCandidates.size} seleccionados\`;
-      } else {
-        bar.style.display = "none";
-      }
+      } else { bar.style.display = "none"; }
     }
 
     function clearSelection() {
@@ -581,63 +625,72 @@ function htmlPage() {
       document.getElementById("compare-bar").style.display = "none";
     }
 
-    function destroyChart() {
-      if (myChart) {
-        myChart.destroy();
-        myChart = null;
-      }
-    }
+    function destroyChart() { if (myChart) { myChart.destroy(); myChart = null; } }
 
-    function getChartColors(index) {
-      const colors = ['#0ea5e9', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
-      return colors[index % colors.length];
-    }
-
-    function openHistory(candidateName) {
+    function openHistory(itemName) {
       destroyChart();
       const modal = document.getElementById("history-modal");
       const title = document.getElementById("modal-candidate-name");
       const body = document.getElementById("history-body");
-
-      title.textContent = "Evolución: " + candidateName;
+      title.textContent = "Evolución: " + itemName;
       
-      const filtered = rawHistory.map(snapshot => ({
-        time: snapshot.timestamp,
-        actas: snapshot.actasPercent,
-        candidate: snapshot.results.find(r => r.name === candidateName)
-      })).filter(s => s.candidate);
+      const allResults = [...currentDataGlobal.top3, ...currentDataGlobal.others];
+      const allSummary = currentDataGlobal.summary.detalleVotosProcessed || [];
+      
+      const currentItem = allResults.find(r => r.nombreAgrupacionPolitica === itemName) || 
+                        allSummary.find(r => r.nombreAgrupacionPolitica === itemName);
+      
+      const filtered = rawHistory.map(s => {
+        let itemData = s.results.find(r => r.name === itemName);
+        if (!itemData && s.summary && s.summary.detalleVotosProcessed) {
+           itemData = s.summary.detalleVotosProcessed.find(d => d.nombreAgrupacionPolitica === itemName);
+        }
+        // Compatibilidad con formato anterior de detalleVotos
+        if (!itemData && s.summary && s.summary.detalleVotos) {
+           const d = s.summary.detalleVotos.find(d => d.descDetalle === itemName);
+           if (d) itemData = { votos: parseInt(d.totalVotos?.replace(/,/g, '') || 0) };
+        }
 
-      // Preparar gráfico
+        return {
+          time: s.timestamp,
+          actas: s.actasPercent,
+          candidate: itemData
+        };
+      }).filter(s => s.candidate);
+
+      // Añadir el punto actual real
+      if (currentItem) {
+        filtered.push({
+          time: "Ahora",
+          actas: currentDataGlobal.actasContabilizadas,
+          candidate: { votos: currentItem.totalVotosValidos }
+        });
+      }
+
       const labels = filtered.map(s => s.time);
-      const dataVotos = filtered.map(s => s.candidate.votos);
-
-      initChart(labels, [{
+      const datasets = [{
         label: 'Votos Totales',
-        data: dataVotos,
+        data: filtered.map(s => s.candidate.votos),
         borderColor: '#0ea5e9',
         backgroundColor: 'rgba(14, 165, 233, 0.1)',
         fill: true,
         tension: 0.3
-      }]);
+      }];
+
+      initChart(labels, datasets);
 
       const rows = [];
       for(let i = 0; i < filtered.length; i++) {
-        const current = filtered[i];
-        const previous = filtered[i-1];
-        const diff = previous ? (current.candidate.votos - previous.candidate.votos) : 0;
-        
-        rows.push(\`
-          <tr>
-            <td>\${current.time}</td>
-            <td>\${current.actas}%</td>
-            <td><strong>\${formatNumber(current.candidate.votos)}</strong></td>
-            <td style="color: \${diff > 0 ? '#10b981' : '#64748b'}">
-              \${diff > 0 ? '+' : ''}\${formatNumber(diff)}
-            </td>
-          </tr>
-        \`);
+        const cur = filtered[i];
+        const prev = filtered[i-1];
+        const diff = prev ? (cur.candidate.votos - prev.candidate.votos) : 0;
+        rows.push(\`<tr>
+          <td>\${cur.time}</td>
+          <td>\${cur.actas}%</td>
+          <td><strong>\${formatNumber(cur.candidate.votos)}</strong></td>
+          <td style="color: \${diff > 0 ? '#10b981' : '#64748b'}">\${diff > 0 ? '+' : ''}\${formatNumber(diff)}</td>
+        </tr>\`);
       }
-
       body.innerHTML = rows.reverse().join("");
       modal.style.display = "flex";
     }
@@ -648,29 +701,29 @@ function htmlPage() {
       const modal = document.getElementById("history-modal");
       const title = document.getElementById("modal-candidate-name");
       const body = document.getElementById("history-body");
-
       title.textContent = "Comparativa de Candidatos";
       
       const datasets = Array.from(selectedCandidates).map((name, idx) => {
-        const data = rawHistory.map(snapshot => {
-          const c = snapshot.results.find(r => r.name === name);
-          return c ? c.votos : null;
+        const data = rawHistory.map(s => {
+          let c = s.results.find(r => r.name === name);
+          if (!c && s.summary && s.summary.detalleVotosProcessed) {
+            c = s.summary.detalleVotosProcessed.find(d => d.nombreAgrupacionPolitica === name);
+          }
+           if (!c && s.summary && s.summary.detalleVotos) {
+            const d = s.summary.detalleVotos.find(d => d.descDetalle === name);
+            if (d) c = { votos: parseInt(d.totalVotos?.replace(/,/g, '') || 0) };
+          }
+          return c ? (c.votos || c.totalVotosValidos) : null;
         });
-        return {
-          label: name,
-          data: data,
-          borderColor: getChartColors(idx),
-          tension: 0.3,
-          fill: false
-        };
+        return { label: name, data, borderColor: getChartColors(idx), tension: 0.3, fill: false };
       });
 
-      const labels = rawHistory.map(s => s.timestamp);
-      initChart(labels, datasets);
-
-      body.innerHTML = \`<tr><td colspan="4" style="text-align:center; color:#94a3b8; padding:40px;">Usa el gráfico superior para comparar el momentum</td></tr>\`;
+      initChart(rawHistory.map(s => s.timestamp), datasets);
+      body.innerHTML = \`<tr><td colspan="4" style="text-align:center; color:#94a3b8; padding:40px;">Usa el gráfico para ver el momentum</td></tr>\`;
       modal.style.display = "flex";
     }
+
+    function getChartColors(i) { return ['#0ea5e9', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'][i % 6]; }
 
     function initChart(labels, datasets) {
       const ctx = document.getElementById('historyChart').getContext('2d');
@@ -678,11 +731,8 @@ function htmlPage() {
         type: 'line',
         data: { labels, datasets },
         options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'bottom', labels: { boxWidth: 12, font: { family: 'Outfit', size: 11 } } }
-          },
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { family: 'Outfit', size: 11 } } } },
           scales: {
             y: { ticks: { callback: v => formatNumber(v), font: { family: 'Outfit' } } },
             x: { ticks: { font: { family: 'Outfit' } } }
@@ -691,99 +741,179 @@ function htmlPage() {
       });
     }
 
-    function closeModal() {
-      document.getElementById("history-modal").style.display = "none";
-      destroyChart();
+    function renderResumenChart(summary) {
+      const ctx = document.getElementById('resumenChart').getContext('2d');
+      if (resumenChart) resumenChart.destroy();
+      
+      const labels = ['Votos Válidos', 'Votos en Blanco', 'Votos Nulos', 'Votos Impugnados'];
+      const data = [summary.votosValidos, summary.votosBlancos, summary.votosNulos, summary.votosImpugnados].map(v => parseInt(v) || 0);
+      
+      resumenChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: data,
+            backgroundColor: ['#0ea5e9', '#cbd5e1', '#ef4444', '#64748b'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom', labels: { font: { family: 'Outfit', weight: 'bold' } } } },
+          cutout: '70%'
+        }
+      });
     }
 
-    async function loadData() {
-      const cardsCont = document.getElementById("cards-container");
-      const listCont = document.getElementById("list-container");
-      const onpeUpdateEl = document.getElementById("onpe-update");
-      const dashUpdateEl = document.getElementById("dashboard-update");
-      const progressFill = document.getElementById("progress-fill");
-      const actasPercentEl = document.getElementById("actas-percent");
-      const refreshBtn = document.querySelector(".header-top button");
+    function closeModal() { document.getElementById("history-modal").style.display = "none"; destroyChart(); }
 
-      if (refreshBtn) {
-        refreshBtn.textContent = "Consultando...";
-        refreshBtn.disabled = true;
-      }
+    async function loadData() {
+      const refreshBtn = document.querySelector("button[onclick='loadData()']");
+      if (refreshBtn) { refreshBtn.textContent = "Cargando..."; refreshBtn.disabled = true; }
 
       try {
         const res = await fetch("/api/results");
         const json = await res.json();
         if (!json.success) throw new Error(json.message);
-
-        onpeUpdateEl.innerHTML = \`<strong>OFICIAL ONPE:</strong> \${formatOnpeDate(json.onpeUpdatedAt)}\`;
-        dashUpdateEl.innerHTML = \`<strong>SISTEMA:</strong> \${json.dashboardUpdatedAt}\`;
-        
-        const percent = json.actasContabilizadas || 0;
-        progressFill.style.width = percent + "%";
-        
-        // Efecto parpadeo si cambió
-        if (lastKnownActas !== -1 && lastKnownActas !== percent) {
-          actasPercentEl.classList.remove("blink");
-          void actasPercentEl.offsetWidth; 
-          actasPercentEl.classList.add("blink");
-        }
-        actasPercentEl.textContent = percent + "%";
-        lastKnownActas = percent;
-        
-        rawHistory = json.history || [];
-
-        // Tarjetas Top 3
-        cardsCont.innerHTML = json.top3.map((item, index) => {
-          const rankLabels = ["PRIMER LUGAR", "SEGUNDO LUGAR", "TERCER LUGAR"];
-          const vsLabel = index === 1 ? "1°" : "2°";
-          const isSelected = selectedCandidates.has(item.nombreAgrupacionPolitica);
-          return \`
-            <div class="card">
-              <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <div class="rank rank-\${index + 1}">\${rankLabels[index]}</div>
-                <input type="checkbox" class="custom-chk" \${isSelected ? 'checked' : ''} onchange="toggleCandidate('\${escapeHtml(item.nombreAgrupacionPolitica)}', this.checked)">
-              </div>
-              <div class="party-name">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
-              <div class="votos-value">\${formatNumber(item.totalVotosValidos)} <span class="votos-label">votos</span></div>
-              <div class="card-footer">
-                <div class="stat-box"><div class="stat-val">\${item.porcentajeVotosValidos}%</div><div class="stat-lbl">% Válidos</div></div>
-                <div class="stat-box"><div class="stat-val">\${item.porcentajeVotosEmitidos}%</div><div class="stat-lbl">% Emitidos</div></div>
-              </div>
-              <div class="diff \${item.diferenciaConAnterior < 0 ? 'minus' : ''}">
-                \${index === 0 ? '🥇 Ganando actualmente' : '📉 ' + formatDiff(item.diferenciaConAnterior) + ' vs ' + vsLabel}
-              </div>
-              <button class="history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">📈 Evolución Individual</button>
-            </div>
-          \`;
-        }).join("");
-
-        // Lista Otros
-        listCont.innerHTML = json.others.map((item, index) => {
-          const isSelected = selectedCandidates.has(item.nombreAgrupacionPolitica);
-          return \`
-            <div class="list-item">
-              <div class="chk-col">
-                <input type="checkbox" class="custom-chk" \${isSelected ? 'checked' : ''} onchange="toggleCandidate('\${escapeHtml(item.nombreAgrupacionPolitica)}', this.checked)">
-              </div>
-              <div class="list-rank">#\${index + 4}</div>
-              <div class="list-party">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
-              <div class="list-candidate">\${escapeHtml(item.nombreCandidato || "---")}</div>
-              <div class="list-votes">\${formatNumber(item.totalVotosValidos)}</div>
-              <div class="list-btn-col">
-                 <button class="list-history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">Evolución</button>
-              </div>
-            </div>
-          \`;
-        }).join("");
-
+        currentDataGlobal = json;
+        renderUI(json);
       } catch (error) {
-        cardsCont.innerHTML = \`<div class="loading" style="color: #f43f5e">Error: \${error.message}</div>\`;
+        console.error(error);
       } finally {
-        if (refreshBtn) {
-          refreshBtn.textContent = "Actualizar";
-          refreshBtn.disabled = false;
-        }
+        if (refreshBtn) { refreshBtn.textContent = "Actualizar"; refreshBtn.disabled = false; }
       }
+    }
+
+    function renderUI(json) {
+      document.getElementById("onpe-update").innerHTML = \`<strong>OFICIAL ONPE:</strong> \${formatOnpeDate(json.onpeUpdatedAt)}\`;
+      document.getElementById("dashboard-update").innerHTML = \`<strong>SISTEMA:</strong> \${json.dashboardUpdatedAt}\`;
+      
+      const percent = json.actasContabilizadas || 0;
+      const progressFill = document.getElementById("progress-fill");
+      const actasPercentEl = document.getElementById("actas-percent");
+      
+      progressFill.style.width = percent + "%";
+      if (lastKnownActas !== -1 && lastKnownActas !== percent) {
+        actasPercentEl.classList.remove("blink");
+        void actasPercentEl.offsetWidth; 
+        actasPercentEl.classList.add("blink");
+      }
+      actasPercentEl.textContent = percent + "%";
+      lastKnownActas = percent;
+      rawHistory = json.history || [];
+
+      if (currentView === 'presidencial') {
+        renderPresidencial(json);
+      } else {
+        renderResumen(json);
+      }
+    }
+
+    function renderPresidencial(json) {
+      const cardsCont = document.getElementById("cards-container");
+      const listCont = document.getElementById("list-container");
+      document.getElementById('view-resumen').style.display = 'none';
+      document.getElementById('view-presidencial').style.display = 'block';
+
+      cardsCont.innerHTML = json.top3.map((item, index) => {
+        const rankLabels = ["PRIMER LUGAR", "SEGUNDO LUGAR", "TERCER LUGAR"];
+        const vsLabel = index === 1 ? "1°" : "2°";
+        const isSelected = selectedCandidates.has(item.nombreAgrupacionPolitica);
+        const incrementalHtml = item.incremental > 0 ? \`<div class="incremental-tag">+\${formatNumber(item.incremental)} nuevos votos</div>\` : '';
+        
+        return \`
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <div class="rank rank-\${index + 1}">\${rankLabels[index]}</div>
+              <input type="checkbox" class="custom-chk" \${isSelected ? 'checked' : ''} onchange="toggleCandidate('\${escapeHtml(item.nombreAgrupacionPolitica)}', this.checked)">
+            </div>
+            <div class="party-name">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
+            <div class="votos-value">\${formatNumber(item.totalVotosValidos)} <span class="votos-label">votos</span></div>
+            \${incrementalHtml}
+            <div class="card-footer">
+              <div class="stat-box"><div class="stat-val">\${item.porcentajeVotosValidos}%</div><div class="stat-lbl">% Válidos</div></div>
+              <div class="stat-box"><div class="stat-val">\${item.porcentajeVotosEmitidos}%</div><div class="stat-lbl">% Emitidos</div></div>
+            </div>
+            <div class="diff \${item.diferenciaConAnterior < 0 ? 'minus' : ''}">
+              \${index === 0 ? '🥇 Ganando actualmente' : '📉 ' + formatDiff(item.diferenciaConAnterior) + ' vs ' + vsLabel}
+            </div>
+            <button class="history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">📈 Evolución Individual</button>
+          </div>
+        \`;
+      }).join("");
+
+      listCont.innerHTML = json.others.map((item, index) => {
+        const isSelected = selectedCandidates.has(item.nombreAgrupacionPolitica);
+        const incHtml = item.incremental > 0 ? \`<div class="list-incremental">+\${formatNumber(item.incremental)}</div>\` : '';
+        return \`
+          <div class="list-item">
+            <div class="chk-col"><input type="checkbox" class="custom-chk" \${isSelected ? 'checked' : ''} onchange="toggleCandidate('\${escapeHtml(item.nombreAgrupacionPolitica)}', this.checked)"></div>
+            <div class="list-rank">#\${index + 4}</div>
+            <div class="list-party">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
+            <div class="list-candidate">\${escapeHtml(item.nombreCandidato || "---")}</div>
+            <div class="list-votes">
+              <div>\${formatNumber(item.totalVotosValidos)}</div>
+              \${incHtml}
+            </div>
+            <div class="list-btn-col"><button class="list-history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">📈</button></div>
+          </div>
+        \`;
+      }).join("");
+    }
+
+    function renderResumen(json) {
+      const topCont = document.getElementById("resumen-cards-container");
+      const listCont = document.getElementById("resumen-list-container");
+      document.getElementById('view-presidencial').style.display = 'none';
+      document.getElementById('view-resumen').style.display = 'block';
+      
+      const items = json.summary.detalleVotosProcessed || [];
+      const top3 = items.slice(0, 3);
+      const others = items.slice(3);
+
+      topCont.innerHTML = top3.map((item, index) => {
+        const rankLabels = ["VALOR PRINCIPAL", "VALOR SECUNDARIO", "VALOR TERCIARIO"];
+        const isSelected = selectedCandidates.has(item.nombreAgrupacionPolitica);
+        const incrementalHtml = item.incremental > 0 ? \`<div class="incremental-tag">+\${formatNumber(item.incremental)} nuevos votos</div>\` : '';
+        
+        return \`
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <div class="rank rank-\${index + 1}">\${rankLabels[index]}</div>
+              <input type="checkbox" class="custom-chk" \${isSelected ? 'checked' : ''} onchange="toggleCandidate('\${escapeHtml(item.nombreAgrupacionPolitica)}', this.checked)">
+            </div>
+            <div class="party-name">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
+            <div class="votos-value">\${formatNumber(item.totalVotosValidos)} <span class="votos-label">votos</span></div>
+            \${incrementalHtml}
+            <div class="card-footer">
+              <div class="stat-box"><div class="stat-val">\${item.porcentajeVotosValidos}%</div><div class="stat-lbl">% Share</div></div>
+              <div class="stat-box"><div class="stat-val">---</div><div class="stat-lbl">-</div></div>
+            </div>
+            <button class="history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">📈 Evolución Individual</button>
+          </div>
+        \`;
+      }).join("");
+
+      listCont.innerHTML = others.map((item, index) => {
+        const isSelected = selectedCandidates.has(item.nombreAgrupacionPolitica);
+        const incHtml = item.incremental > 0 ? \`<div class="list-incremental">+\${formatNumber(item.incremental)}</div>\` : '';
+        return \`
+          <div class="list-item">
+             <div class="chk-col"><input type="checkbox" class="custom-chk" \${isSelected ? 'checked' : ''} onchange="toggleCandidate('\${escapeHtml(item.nombreAgrupacionPolitica)}', this.checked)"></div>
+            <div class="list-rank">#\${index + 4}</div>
+            <div class="list-party">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
+            <div class="list-candidate">---</div>
+            <div class="list-votes">
+              <div>\${formatNumber(item.totalVotosValidos)}</div>
+              \${incHtml}
+            </div>
+            <div class="list-btn-col"><button class="list-history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">📈</button></div>
+          </div>
+        \`;
+      }).join("");
+
+      renderResumenChart(json.summary);
     }
 
     loadData();
@@ -823,12 +953,22 @@ const server = http.createServer(async (req, res) => {
         .filter((x) => typeof x.totalVotosValidos === "number")
         .sort((a, b) => b.totalVotosValidos - a.totalVotosValidos);
 
+      // Obtener el último snapshot para calcular incrementales reales
+      const lastSessionSnapshot = historySnapshots[historySnapshots.length - 1];
+
+      const getIncremental = (name, currentVotos) => {
+        if (!lastSessionSnapshot) return 0;
+        const prev = lastSessionSnapshot.results.find(r => r.name === name);
+        return prev ? currentVotos - prev.votos : 0;
+      };
+
       // El top 3 solo de partidos (no Blanco/Nulo) para las tarjetas premium
       const partiesSorted = allSorted.filter(x => !isSpecial(x.nombreAgrupacionPolitica));
       const top3Parties = partiesSorted.slice(0, 3);
 
       const top3 = top3Parties.map((item, index) => ({
         ...item,
+        incremental: getIncremental(item.nombreAgrupacionPolitica, item.totalVotosValidos),
         diferenciaConAnterior:
           index === 0 ? 0 : item.totalVotosValidos - top3Parties[index - 1].totalVotosValidos,
       }));
@@ -842,12 +982,37 @@ const server = http.createServer(async (req, res) => {
       const remainingParties = remainingOthers.filter(x => !isSpecial(x.nombreAgrupacionPolitica));
       const specialEntries = remainingOthers.filter(x => isSpecial(x.nombreAgrupacionPolitica));
 
-      const others = [...remainingParties, ...specialEntries];
+      const others = [...remainingParties, ...specialEntries].map(item => ({
+        ...item,
+        incremental: getIncremental(item.nombreAgrupacionPolitica, item.totalVotosValidos)
+      }));
 
-      const summary = summaryJson?.data || {};
+      const summaryData = summaryJson?.data || {};
+      const detalleVotos = (summaryData.detalleVotos || []).map(item => ({
+        nombreAgrupacionPolitica: item.descDetalle,
+        totalVotosValidos: parseInt(item.totalVotos?.replace(/,/g, '') || 0),
+        porcentajeVotosValidos: item.porcentaje,
+        incremental: 0 // Se calculará abajo
+      })).sort((a, b) => b.totalVotosValidos - a.totalVotosValidos);
+
+      // Calcular incrementales para resumen
+      if (lastSessionSnapshot && lastSessionSnapshot.summary && lastSessionSnapshot.summary.detalleVotos) {
+        detalleVotos.forEach(item => {
+          const prev = lastSessionSnapshot.summary.detalleVotos.find(d => d.descDetalle === item.nombreAgrupacionPolitica);
+          if (prev) {
+            const prevVotos = parseInt(prev.totalVotos?.replace(/,/g, '') || 0);
+            item.incremental = item.totalVotosValidos - prevVotos;
+          }
+        });
+      }
+
+      const summary = {
+        ...summaryData,
+        detalleVotosProcessed: detalleVotos
+      };
 
       // Actualizar historial si es necesario
-      updateHistory(allSorted, summary.actasContabilizadas);
+      updateHistory(allSorted, summary.actasContabilizadas, summary);
 
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(
