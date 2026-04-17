@@ -3,6 +3,8 @@ const https = require("https");
 const { URL } = require("url");
 
 const PORT = process.env.PORT || 3000;
+const fs = require("fs");
+const HISTORY_FILE = "history.json";
 
 // Almacén de historial en memoria
 let historySnapshots = [];
@@ -30,9 +32,30 @@ function updateHistory(currentData, actasPercent) {
   };
 
   historySnapshots.push(snapshot);
+  
+  // Limitar a los últimos 1000 cambios (aumentado para persistencia histórica)
+  if (historySnapshots.length > 1000) historySnapshots.shift();
 
-  // Limitar a los últimos 50 cambios para no saturar la memoria
-  if (historySnapshots.length > 50) historySnapshots.shift();
+  // Guardar en archivo
+  try {
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(historySnapshots), "utf-8");
+  } catch (err) {
+    console.error("Error guardando historial:", err);
+  }
+}
+
+// Cargar historial al iniciar
+try {
+  if (fs.existsSync(HISTORY_FILE)) {
+    const data = fs.readFileSync(HISTORY_FILE, "utf-8");
+    historySnapshots = JSON.parse(data);
+    if (historySnapshots.length > 0) {
+      lastActasPercent = historySnapshots[historySnapshots.length - 1].actasPercent;
+      console.log(`Historial cargado: ${historySnapshots.length} capturas.`);
+    }
+  }
+} catch (err) {
+  console.error("Error cargando historial:", err);
 }
 
 const ONPE_RESULTS_URL =
@@ -113,6 +136,7 @@ function htmlPage() {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root {
       --bg: #f8fafc;
@@ -328,7 +352,7 @@ function htmlPage() {
     .close-modal { cursor: pointer; color: #94a3b8; font-size: 28px; transition: color 0.2s; }
     .close-modal:hover { color: #64748b; }
 
-    .modal-body { padding: 32px; max-height: 60vh; overflow-y: auto; }
+    .modal-body { padding: 32px; max-height: 85vh; overflow-y: auto; }
 
     .history-table { width: 100%; border-collapse: collapse; }
     .history-table th { text-align: left; color: #64748b; padding: 12px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #f1f5f9; }
@@ -367,7 +391,7 @@ function htmlPage() {
 
     .list-item {
       display: grid;
-      grid-template-columns: 80px 2fr 1.5fr 1fr 120px;
+      grid-template-columns: 40px 60px 2fr 1.5fr 1fr 120px;
       padding: 20px 24px;
       align-items: center;
       border-bottom: 1px solid #f1f5f9;
@@ -406,6 +430,41 @@ function htmlPage() {
     }
     button:hover { opacity: 0.9; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    @keyframes blink {
+      0% { opacity: 1; }
+      50% { opacity: 0.2; transform: scale(1.1); color: var(--accent); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    .blink { animation: blink 0.8s ease-in-out 3; }
+
+    .compare-bar {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #0f172a;
+      color: white;
+      padding: 16px 32px;
+      border-radius: 99px;
+      display: none;
+      align-items: center;
+      gap: 24px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      z-index: 900;
+      animation: slideUp 0.3s ease-out;
+    }
+    @keyframes slideUp { from { bottom: -100px; opacity: 0; } to { bottom: 30px; opacity: 1; } }
+
+    .chk-col { width: 30px; display: flex; align-items: center; justify-content: center; }
+    .custom-chk { 
+      width: 20px; height: 20px; cursor: pointer; border-radius: 6px; border: 2px solid #e2e8f0; 
+      appearance: none; transition: all 0.2s; background: white; 
+    }
+    .custom-chk:checked { background: var(--accent); border-color: var(--accent); }
+    .custom-chk:checked::before { content: '✓'; color: white; display: block; text-align: center; font-size: 14px; font-weight: 800; }
+
+    .chart-container { width: 100%; height: 260px; margin-bottom: 30px; }
   </style>
 </head>
 <body>
@@ -441,14 +500,25 @@ function htmlPage() {
     </div>
   </div>
 
+  <div id="compare-bar" class="compare-bar">
+    <div id="compare-count" style="font-weight: 800; font-size: 18px;">0 seleccionados</div>
+    <div style="display: flex; gap: 12px;">
+      <button style="background: var(--accent);" onclick="openComparison()">Comparar</button>
+      <button style="background: #334155;" onclick="clearSelection()">Limpiar</button>
+    </div>
+  </div>
+
   <!-- Modal -->
   <div id="history-modal" class="modal-overlay">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width: 800px;">
       <div class="modal-header">
-        <div class="modal-title" id="modal-candidate-name">Historial</div>
-        <div class="close-modal" onclick="closeModal()">×</div>
+        <div id="modal-candidate-name" class="modal-title">Evolución</div>
+        <div class="close-modal" onclick="closeModal()">&times;</div>
       </div>
       <div class="modal-body">
+        <div class="chart-container">
+          <canvas id="historyChart"></canvas>
+        </div>
         <table class="history-table">
           <thead>
             <tr>
@@ -466,6 +536,9 @@ function htmlPage() {
 
   <script>
     let rawHistory = [];
+    let selectedCandidates = new Set();
+    let myChart = null;
+    let lastKnownActas = -1;
 
     function formatNumber(value) { return new Intl.NumberFormat("es-PE").format(value || 0); }
 
@@ -488,7 +561,40 @@ function htmlPage() {
       return String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
+    function toggleCandidate(name, checked) {
+      if (checked) selectedCandidates.add(name);
+      else selectedCandidates.delete(name);
+      
+      const bar = document.getElementById("compare-bar");
+      const label = document.getElementById("compare-count");
+      if (selectedCandidates.size > 0) {
+        bar.style.display = "flex";
+        label.textContent = \`\${selectedCandidates.size} seleccionados\`;
+      } else {
+        bar.style.display = "none";
+      }
+    }
+
+    function clearSelection() {
+      selectedCandidates.clear();
+      document.querySelectorAll(".custom-chk").forEach(c => c.checked = false);
+      document.getElementById("compare-bar").style.display = "none";
+    }
+
+    function destroyChart() {
+      if (myChart) {
+        myChart.destroy();
+        myChart = null;
+      }
+    }
+
+    function getChartColors(index) {
+      const colors = ['#0ea5e9', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+      return colors[index % colors.length];
+    }
+
     function openHistory(candidateName) {
+      destroyChart();
       const modal = document.getElementById("history-modal");
       const title = document.getElementById("modal-candidate-name");
       const body = document.getElementById("history-body");
@@ -500,6 +606,19 @@ function htmlPage() {
         actas: snapshot.actasPercent,
         candidate: snapshot.results.find(r => r.name === candidateName)
       })).filter(s => s.candidate);
+
+      // Preparar gráfico
+      const labels = filtered.map(s => s.time);
+      const dataVotos = filtered.map(s => s.candidate.votos);
+
+      initChart(labels, [{
+        label: 'Votos Totales',
+        data: dataVotos,
+        borderColor: '#0ea5e9',
+        backgroundColor: 'rgba(14, 165, 233, 0.1)',
+        fill: true,
+        tension: 0.3
+      }]);
 
       const rows = [];
       for(let i = 0; i < filtered.length; i++) {
@@ -523,8 +642,58 @@ function htmlPage() {
       modal.style.display = "flex";
     }
 
+    function openComparison() {
+      if (selectedCandidates.size === 0) return;
+      destroyChart();
+      const modal = document.getElementById("history-modal");
+      const title = document.getElementById("modal-candidate-name");
+      const body = document.getElementById("history-body");
+
+      title.textContent = "Comparativa de Candidatos";
+      
+      const datasets = Array.from(selectedCandidates).map((name, idx) => {
+        const data = rawHistory.map(snapshot => {
+          const c = snapshot.results.find(r => r.name === name);
+          return c ? c.votos : null;
+        });
+        return {
+          label: name,
+          data: data,
+          borderColor: getChartColors(idx),
+          tension: 0.3,
+          fill: false
+        };
+      });
+
+      const labels = rawHistory.map(s => s.timestamp);
+      initChart(labels, datasets);
+
+      body.innerHTML = \`<tr><td colspan="4" style="text-align:center; color:#94a3b8; padding:40px;">Usa el gráfico superior para comparar el momentum</td></tr>\`;
+      modal.style.display = "flex";
+    }
+
+    function initChart(labels, datasets) {
+      const ctx = document.getElementById('historyChart').getContext('2d');
+      myChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 12, font: { family: 'Outfit', size: 11 } } }
+          },
+          scales: {
+            y: { ticks: { callback: v => formatNumber(v), font: { family: 'Outfit' } } },
+            x: { ticks: { font: { family: 'Outfit' } } }
+          }
+        }
+      });
+    }
+
     function closeModal() {
       document.getElementById("history-modal").style.display = "none";
+      destroyChart();
     }
 
     async function loadData() {
@@ -533,7 +702,7 @@ function htmlPage() {
       const onpeUpdateEl = document.getElementById("onpe-update");
       const dashUpdateEl = document.getElementById("dashboard-update");
       const progressFill = document.getElementById("progress-fill");
-      const actasPercent = document.getElementById("actas-percent");
+      const actasPercentEl = document.getElementById("actas-percent");
       const refreshBtn = document.querySelector(".header-top button");
 
       if (refreshBtn) {
@@ -551,7 +720,15 @@ function htmlPage() {
         
         const percent = json.actasContabilizadas || 0;
         progressFill.style.width = percent + "%";
-        actasPercent.textContent = percent + "%";
+        
+        // Efecto parpadeo si cambió
+        if (lastKnownActas !== -1 && lastKnownActas !== percent) {
+          actasPercentEl.classList.remove("blink");
+          void actasPercentEl.offsetWidth; 
+          actasPercentEl.classList.add("blink");
+        }
+        actasPercentEl.textContent = percent + "%";
+        lastKnownActas = percent;
         
         rawHistory = json.history || [];
 
@@ -559,11 +736,14 @@ function htmlPage() {
         cardsCont.innerHTML = json.top3.map((item, index) => {
           const rankLabels = ["PRIMER LUGAR", "SEGUNDO LUGAR", "TERCER LUGAR"];
           const vsLabel = index === 1 ? "1°" : "2°";
+          const isSelected = selectedCandidates.has(item.nombreAgrupacionPolitica);
           return \`
             <div class="card">
-              <div class="rank rank-\${index + 1}">\${rankLabels[index]}</div>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div class="rank rank-\${index + 1}">\${rankLabels[index]}</div>
+                <input type="checkbox" class="custom-chk" \${isSelected ? 'checked' : ''} onchange="toggleCandidate('\${escapeHtml(item.nombreAgrupacionPolitica)}', this.checked)">
+              </div>
               <div class="party-name">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
-              <div class="candidate-name">\${escapeHtml(item.nombreCandidato || "---")}</div>
               <div class="votos-value">\${formatNumber(item.totalVotosValidos)} <span class="votos-label">votos</span></div>
               <div class="card-footer">
                 <div class="stat-box"><div class="stat-val">\${item.porcentajeVotosValidos}%</div><div class="stat-lbl">% Válidos</div></div>
@@ -572,23 +752,29 @@ function htmlPage() {
               <div class="diff \${item.diferenciaConAnterior < 0 ? 'minus' : ''}">
                 \${index === 0 ? '🥇 Ganando actualmente' : '📉 ' + formatDiff(item.diferenciaConAnterior) + ' vs ' + vsLabel}
               </div>
-              <button class="history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">📈 Ver Historial</button>
+              <button class="history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">📈 Evolución Individual</button>
             </div>
           \`;
         }).join("");
 
         // Lista Otros
-        listCont.innerHTML = json.others.map((item, index) => \`
-          <div class="list-item">
-            <div class="list-rank">#\${index + 4}</div>
-            <div class="list-party">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
-            <div class="list-candidate">\${escapeHtml(item.nombreCandidato || "---")}</div>
-            <div class="list-votes">\${formatNumber(item.totalVotosValidos)}</div>
-            <div class="list-btn-col">
-               <button class="list-history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">Historial</button>
+        listCont.innerHTML = json.others.map((item, index) => {
+          const isSelected = selectedCandidates.has(item.nombreAgrupacionPolitica);
+          return \`
+            <div class="list-item">
+              <div class="chk-col">
+                <input type="checkbox" class="custom-chk" \${isSelected ? 'checked' : ''} onchange="toggleCandidate('\${escapeHtml(item.nombreAgrupacionPolitica)}', this.checked)">
+              </div>
+              <div class="list-rank">#\${index + 4}</div>
+              <div class="list-party">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
+              <div class="list-candidate">\${escapeHtml(item.nombreCandidato || "---")}</div>
+              <div class="list-votes">\${formatNumber(item.totalVotosValidos)}</div>
+              <div class="list-btn-col">
+                 <button class="list-history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">Evolución</button>
+              </div>
             </div>
-          </div>
-        \`).join("");
+          \`;
+        }).join("");
 
       } catch (error) {
         cardsCont.innerHTML = \`<div class="loading" style="color: #f43f5e">Error: \${error.message}</div>\`;
