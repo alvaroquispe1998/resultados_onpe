@@ -598,13 +598,16 @@ function htmlPage() {
 }
 
 const server = http.createServer(async (req, res) => {
-  if (req.url === "/") {
+  const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const pathname = parsedUrl.pathname;
+
+  if (pathname === "/") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(htmlPage());
     return;
   }
 
-  if (req.url === "/api/results") {
+  if (pathname === "/api/results") {
     try {
       const [resultsJson, summaryJson] = await Promise.all([
         fetchOnpeData(),
