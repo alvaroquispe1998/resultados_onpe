@@ -774,28 +774,28 @@ function htmlPage() {
               const diffBrecha = gapSnapshot - gapAnterior;
 
               if (diffBrecha > 0) {
-                  summaryHtml = `<div style="background: rgba(14, 165, 233, 0.1); padding: 16px; border-radius: 12px; border-left: 4px solid var(--accent); margin-top: 20px;">
+                  summaryHtml = \`<div style="background: rgba(14, 165, 233, 0.1); padding: 16px; border-radius: 12px; border-left: 4px solid var(--accent); margin-top: 20px;">
                     <strong style="color: var(--accent); display: block; margin-bottom: 4px;">🎯 ANÁLISIS DE BRECHA</strong>
                     <span style="font-size: 15px; color: #334155;">
-                        <b>${c1.name}</b> estiró su ventaja sobre <b>${c2.name}</b> por <b>${formatNumber(diffBrecha)}</b> votos en el último tramo. 
-                        La distancia actual es de <b>${formatNumber(gapActual)}</b> votos.
+                        <b>\${c1.name}</b> estiró su ventaja sobre <b>\${c2.name}</b> por <b>\${formatNumber(diffBrecha)}</b> votos en el último tramo. 
+                        La distancia actual es de <b>\${formatNumber(gapActual)}</b> votos.
                     </span>
-                  </div>`;
+                  </div>\`;
               } else if (diffBrecha < 0) {
-                  summaryHtml = `<div style="background: rgba(16, 185, 129, 0.1); padding: 16px; border-radius: 12px; border-left: 4px solid var(--emerald); margin-top: 20px;">
+                  summaryHtml = \`<div style="background: rgba(16, 185, 129, 0.1); padding: 16px; border-radius: 12px; border-left: 4px solid var(--emerald); margin-top: 20px;">
                     <strong style="color: var(--emerald); display: block; margin-bottom: 4px;">⚡ RECORTE DE DISTANCIA</strong>
                     <span style="font-size: 15px; color: #334155;">
-                        <b>${c2.name}</b> acortó la brecha con <b>${c1.name}</b> en <b>${formatNumber(Math.abs(diffBrecha))}</b> votos. 
-                        La distancia actual se redujo a <b>${formatNumber(gapActual)}</b> votos.
+                        <b>\${c2.name}</b> acortó la brecha con <b>\${c1.name}</b> en <b>\${formatNumber(Math.abs(diffBrecha))}</b> votos. 
+                        La distancia actual se redujo a <b>\${formatNumber(gapActual)}</b> votos.
                     </span>
-                  </div>`;
+                  </div>\`;
               } else {
-                  summaryHtml = `<p style="text-align:center; color:#64748b; margin-top:20px;">La brecha entre los líderes se mantiene estable (diferencia de ${formatNumber(gapActual)} votos).</p>`;
+                  summaryHtml = \`<p style="text-align:center; color:#64748b; margin-top:20px;">La brecha entre los líderes se mantiene estable (diferencia de \${formatNumber(gapActual)} votos).</p>\`;
               }
           }
       }
 
-      body.innerHTML = summaryHtml || `<p style="text-align:center; color:#94a3b8; padding:40px;">El gráfico muestra cuántos votos ganó cada candidato en cada tramo de la historia.</p>`;
+      body.innerHTML = summaryHtml || \`<p style="text-align:center; color:#94a3b8; padding:40px;">El gráfico muestra cuántos votos ganó cada candidato en cada tramo de la historia.</p>\`;
       modal.style.display = "flex";
     }
 
