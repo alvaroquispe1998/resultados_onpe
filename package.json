@@ -1,0 +1,14 @@
+{
+  "name": "onpe-dashboard-premium",
+  "version": "1.0.0",
+  "description": "Dashboard premium para resultados de la ONPE",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {}
+}
