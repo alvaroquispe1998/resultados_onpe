@@ -585,12 +585,7 @@ function htmlPage() {
 
     function escapeHtml(t) { return String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
 
-    function switchView(view) {
-      currentView = view;
-      document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
-      document.getElementById('view-' + view).classList.add('active');
-      if (currentDataGlobal) renderUI(currentDataGlobal);
-    }
+
 
     function toggleCandidate(name, checked) {
       if (checked) selectedCandidates.add(name);
@@ -746,9 +741,9 @@ function htmlPage() {
       // ANÁLISIS DE BRECHAS (INTERESANTE)
       let summaryHtml = "";
       if (selectedCandidates.size >= 2) {
+          const allData = [...currentDataGlobal.top3, ...currentDataGlobal.others];
           const sortedSelected = Array.from(selectedCandidates).map(name => {
-              const c = allResults.find(r => r.nombreAgrupacionPolitica === name) || 
-                        allSummary.find(r => r.nombreAgrupacionPolitica === name);
+              const c = allData.find(r => r.nombreAgrupacionPolitica === name);
               return { name, votos: c ? c.totalVotosValidos : 0 };
           }).sort((a,b) => b.votos - a.votos);
 
@@ -896,18 +891,12 @@ function htmlPage() {
       lastKnownActas = percent;
       rawHistory = json.history || [];
 
-      if (currentView === 'presidencial') {
-        renderPresidencial(json);
-      } else {
-        renderResumen(json);
-      }
+      renderPresidencial(json);
     }
 
     function renderPresidencial(json) {
       const cardsCont = document.getElementById("cards-container");
       const listCont = document.getElementById("list-container");
-      document.getElementById('view-resumen').style.display = 'none';
-      document.getElementById('view-presidencial').style.display = 'block';
 
       cardsCont.innerHTML = json.top3.map((item, index) => {
         const rankLabels = ["PRIMER LUGAR", "SEGUNDO LUGAR", "TERCER LUGAR"];
