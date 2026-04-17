@@ -454,8 +454,8 @@ function htmlPage() {
             <tr>
               <th>Hora</th>
               <th>Actas %</th>
-              <th>Votos</th>
-              <th>% Vál.</th>
+              <th>Votos Totales</th>
+              <th>+ Votos</th>
             </tr>
           </thead>
           <tbody id="history-body"></tbody>
@@ -501,15 +501,25 @@ function htmlPage() {
         candidate: snapshot.results.find(r => r.name === candidateName)
       })).filter(s => s.candidate);
 
-      body.innerHTML = filtered.map(s => \`
-        <tr>
-          <td>\${s.time}</td>
-          <td>\${s.actas}%</td>
-          <td><strong>\${formatNumber(s.candidate.votos)}</strong></td>
-          <td>\${s.candidate.porcValido}%</td>
-        </tr>
-      \`).reverse().join("");
+      const rows = [];
+      for(let i = 0; i < filtered.length; i++) {
+        const current = filtered[i];
+        const previous = filtered[i-1];
+        const diff = previous ? (current.candidate.votos - previous.candidate.votos) : 0;
+        
+        rows.push(\`
+          <tr>
+            <td>\${current.time}</td>
+            <td>\${current.actas}%</td>
+            <td><strong>\${formatNumber(current.candidate.votos)}</strong></td>
+            <td style="color: \${diff > 0 ? '#10b981' : '#64748b'}">
+              \${diff > 0 ? '+' : ''}\${formatNumber(diff)}
+            </td>
+          </tr>
+        \`);
+      }
 
+      body.innerHTML = rows.reverse().join("");
       modal.style.display = "flex";
     }
 
