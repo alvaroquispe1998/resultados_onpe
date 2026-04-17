@@ -598,8 +598,9 @@ function htmlPage() {
 }
 
 const server = http.createServer(async (req, res) => {
-  // Limpiar la URL de parámetros de búsqueda para las comparaciones
-  const urlPath = req.url.split('?')[0];
+  try {
+    const urlPath = req.url.split('?')[0];
+    console.log(`[${new Date().toISOString()}] ${req.method} ${urlPath}`);
 
   if (urlPath === "/" || urlPath === "/index.html") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -677,8 +678,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-  res.end("Not found");
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not found");
+  } catch (err) {
+    console.error("Global Error:", err);
+    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Internal Server Error");
+  }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 server.listen(PORT, () => {
