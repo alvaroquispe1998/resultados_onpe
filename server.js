@@ -514,7 +514,9 @@ function htmlPage() {
         </div>
         <div class="progress-bar-bg"><div id="progress-fill" class="progress-bar-fill"></div></div>
       </div>
-    </header>    <!-- Presidencial View -->
+    </header>
+
+    <!-- Presidencial View -->
     <div id="view-presidencial" class="view-content active">
       <div id="cards-container" class="grid"></div>
       <div class="others-section">
@@ -525,7 +527,7 @@ function htmlPage() {
           <div class="loading" style="padding: 40px; text-align: center;">Cargando lista...</div>
         </div>
       </div>
-    </div>/div>
+    </div>
   </div>
 
   <div id="compare-bar" class="compare-bar">
@@ -567,9 +569,7 @@ function htmlPage() {
     let currentDataGlobal = null;
     let selectedCandidates = new Set();
     let myChart = null;
-    let resumenChart = null;
     let lastKnownActas = -1;
-    let currentView = 'presidencial';
 
     function formatNumber(v) { return new Intl.NumberFormat("es-PE").format(v || 0); }
     function formatDiff(v) { return (v >= 0 ? "+" : "") + formatNumber(v); }
