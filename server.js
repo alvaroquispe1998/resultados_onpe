@@ -598,16 +598,16 @@ function htmlPage() {
 }
 
 const server = http.createServer(async (req, res) => {
-  const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  const pathname = parsedUrl.pathname;
+  // Limpiar la URL de parámetros de búsqueda para las comparaciones
+  const urlPath = req.url.split('?')[0];
 
-  if (pathname === "/") {
+  if (urlPath === "/" || urlPath === "/index.html") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(htmlPage());
     return;
   }
 
-  if (pathname === "/api/results") {
+  if (urlPath === "/api/results") {
     try {
       const [resultsJson, summaryJson] = await Promise.all([
         fetchOnpeData(),
