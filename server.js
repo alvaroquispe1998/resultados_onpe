@@ -416,7 +416,7 @@ function htmlPage() {
     .modal-content {
       background: #ffffff;
       width: 100%;
-      max-width: 600px;
+      max-width: 750px;
       border-radius: 24px;
       position: relative;
       box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);
@@ -594,7 +594,7 @@ function htmlPage() {
         <div style="height: 300px; margin-bottom: 30px;">
           <canvas id="historyChart"></canvas>
         </div>
-        <table class="history-table">
+        <table id="history-table" class="history-table">
           <thead>
             <tr>
               <th>Hora</th>
@@ -605,6 +605,7 @@ function htmlPage() {
           </thead>
           <tbody id="history-body"></tbody>
         </table>
+        <div id="comparison-summary" style="display: none; width: 100%; flex-direction: column;"></div>
       </div>
     </div>
   </div>
@@ -656,6 +657,10 @@ function htmlPage() {
       const modal = document.getElementById("history-modal");
       const title = document.getElementById("modal-candidate-name");
       const body = document.getElementById("history-body");
+      
+      document.getElementById("history-table").style.display = "table";
+      document.getElementById("comparison-summary").style.display = "none";
+
       title.textContent = "Evolución: " + itemName;
       
       const allResults = [...currentDataGlobal.top3, ...currentDataGlobal.others];
@@ -743,10 +748,23 @@ function htmlPage() {
       const modal = document.getElementById("history-modal");
       const title = document.getElementById("modal-candidate-name");
       const body = document.getElementById("history-body");
-      title.textContent = "Momentum: Votos Ganados por Actualización";
+      title.textContent = "Comparativa de Crecimiento (Votos Ganados Acumulados)";
       
       const datasets = Array.from(selectedCandidates).map((name, idx) => {
-        // En comparativa, graficamos los INCREMENTOS (+ votos) para que sea útil
+        // Obtenemos los votos base (del primer registro del historial)
+        let baseVotos = 0;
+        if (rawHistory.length > 0) {
+           const s0 = rawHistory[0];
+           let c0 = s0.results.find(r => r.name === name);
+           if (!c0 && s0.summary && s0.summary.detalleVotosProcessed) c0 = s0.summary.detalleVotosProcessed.find(d => d.nombreAgrupacionPolitica === name);
+           if (!c0 && s0.summary && s0.summary.detalleVotos) {
+             const d = s0.summary.detalleVotos.find(d => d.descDetalle === name);
+             if (d) c0 = { votos: parseInt(d.totalVotos?.replace(/,/g, '') || 0) };
+           }
+           baseVotos = c0 ? (c0.votos || c0.totalVotosValidos || 0) : 0;
+        }
+
+        // Graficamos la suma total de votos GANADOS desde el primer registro
         const data = rawHistory.map((s, i) => {
           let c = s.results.find(r => r.name === name);
           if (!c && s.summary && s.summary.detalleVotosProcessed) {
@@ -758,17 +776,8 @@ function htmlPage() {
           }
           
           if (!c) return null;
-          const currentVotos = c.votos || c.totalVotosValidos;
-          
-          // Calcular delta respecto al anterior
-          if (i === 0) return 0;
-          const prevSnapshot = rawHistory[i-1];
-          let prevC = prevSnapshot.results.find(r => r.name === name);
-          if (!prevC && prevSnapshot.summary && prevSnapshot.summary.detalleVotosProcessed) {
-            prevC = prevSnapshot.summary.detalleVotosProcessed.find(d => d.nombreAgrupacionPolitica === name);
-          }
-          const prevVotos = prevC ? (prevC.votos || prevC.totalVotosValidos) : currentVotos;
-          return currentVotos - prevVotos;
+          const currentVotos = c.votos || c.totalVotosValidos || 0;
+          return currentVotos - baseVotos; 
         });
 
         return { 
@@ -787,6 +796,14 @@ function htmlPage() {
       
       // ANÁLISIS DE BRECHAS EN CASCADA
       let summaryHtml = "";
+      
+      // ORDENAR CANDIDATOS SELECCIONADOS POR VOTOS
+      const allData = [...currentDataGlobal.top3, ...currentDataGlobal.others];
+      const sortedSelected = Array.from(selectedCandidates).map(name => {
+          const c = allData.find(r => r.nombreAgrupacionPolitica === name);
+          return { name, votos: c ? c.totalVotosValidos : 0 };
+      }).sort((a,b) => b.votos - a.votos);
+
       if (sortedSelected.length >= 2) {
           for (let i = 0; i < sortedSelected.length - 1; i++) {
               const c1 = sortedSelected[i];
@@ -828,7 +845,7 @@ function htmlPage() {
                   bg = "rgba(100, 116, 139, 0.1)";
               }
 
-              summaryHtml += '<div style="background: ' + bg + '; padding: 18px; border-radius: 12px; border-left: 5px solid ' + color + '; margin-bottom: 15px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">' +
+              summaryHtml += '<div style="background: ' + bg + '; padding: 18px; border-radius: 12px; border-left: 5px solid ' + color + '; margin-bottom: 15px; width: 100%; box-sizing: border-box; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">' +
                 '<div style="color: ' + color + '; font-weight: 800; font-size: 13px; margin-bottom: 6px; letter-spacing: 0.5px;">' + icon + ' ' + title + '</div>' +
                 '<div style="font-size: 15.5px; line-height: 1.5; color: #1e293b;">' +
                   '<strong>' + c1.name + '</strong> vs <strong>' + c2.name + '</strong>: ' +
@@ -839,12 +856,11 @@ function htmlPage() {
           }
       }
 
-      body.innerHTML = \`
-        <div style="height: 320px; margin-bottom: 25px; width: 100%;">
-          <canvas id="historyChart"></canvas>
-        </div>
-        <div style="width: 100%; display: flex; flex-direction: column;">\${summaryHtml}</div>
-      \`;
+      document.getElementById("history-table").style.display = "none";
+      const summaryDiv = document.getElementById("comparison-summary");
+      summaryDiv.style.display = "flex";
+      summaryDiv.innerHTML = summaryHtml;
+      
       modal.style.display = "flex";
     }
 
