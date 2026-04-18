@@ -1027,10 +1027,16 @@ const server = http.createServer(async (req, res) => {
       ]);
 
       if (!resultsJson || !resultsJson.success || !Array.isArray(resultsJson.data)) {
-        throw new Error("La respuesta del endpoint de resultados no es válida");
+        throw new Error("La respuesta de presidenciales no es válida");
       }
 
-      // Separar candidatos reales de votos especiales (Blanco/Nulo)
+      const summaryData = summaryJson?.data || {};
+
+      // CABECERA: Sacamos progreso y tiempos del endpoint de Resumen General
+      const actasPct = summaryData.nuPorcentajeActasContabilizadas || "0";
+      const onpeTs = summaryData.feActualizacion || summaryData.fechaActualizacion || "---";
+
+      // CUERPO: Sacamos candidatos y votos del endpoint de Presidenciales
       const isSpecial = (name) =>
         name === "VOTOS EN BLANCO" || name === "VOTOS NULOS" || name === "VOTOS IMPUGNADOS";
 
@@ -1038,78 +1044,42 @@ const server = http.createServer(async (req, res) => {
         .filter((x) => typeof x.totalVotosValidos === "number")
         .sort((a, b) => b.totalVotosValidos - a.totalVotosValidos);
 
-      // Obtener el último snapshot para calcular incrementales reales
       const lastSessionSnapshot = historySnapshots[historySnapshots.length - 1];
-
       const getIncremental = (name, currentVotos) => {
         if (!lastSessionSnapshot) return 0;
         const prev = lastSessionSnapshot.results.find(r => r.name === name);
         return prev ? currentVotos - prev.votos : 0;
       };
 
-      // El top 3 solo de partidos (no Blanco/Nulo) para las tarjetas premium
       const partiesSorted = allSorted.filter(x => !isSpecial(x.nombreAgrupacionPolitica));
       const top3Parties = partiesSorted.slice(0, 3);
-
       const top3 = top3Parties.map((item, index) => ({
         ...item,
         incremental: getIncremental(item.nombreAgrupacionPolitica, item.totalVotosValidos),
-        diferenciaConAnterior:
-          index === 0 ? 0 : item.totalVotosValidos - top3Parties[index - 1].totalVotosValidos,
+        diferenciaConAnterior: index === 0 ? 0 : item.totalVotosValidos - top3Parties[index - 1].totalVotosValidos,
       }));
 
-      // El resto son todos los que no entraron en el top 3
-      const top3Ids = new Set(top3.map(x => x.nombreAgrupacionPolitica));
+      const top3Names = new Set(top3.map(x => x.nombreAgrupacionPolitica));
+      const others = allSorted
+        .filter(x => !top3Names.has(x.nombreAgrupacionPolitica))
+        .map(item => ({
+          ...item,
+          incremental: getIncremental(item.nombreAgrupacionPolitica, item.totalVotosValidos)
+        }));
 
-      const remainingOthers = allSorted.filter(x => !top3Ids.has(x.nombreAgrupacionPolitica));
-
-      // Separar los partidos restantes de los votos especiales para mandarlos al final
-      const remainingParties = remainingOthers.filter(x => !isSpecial(x.nombreAgrupacionPolitica));
-      const specialEntries = remainingOthers.filter(x => isSpecial(x.nombreAgrupacionPolitica));
-
-      const others = [...remainingParties, ...specialEntries].map(item => ({
-        ...item,
-        incremental: getIncremental(item.nombreAgrupacionPolitica, item.totalVotosValidos)
-      }));
-
-      const summaryData = summaryJson?.data || {};
-      const detalleVotos = (summaryData.detalleVotos || []).map(item => ({
-        nombreAgrupacionPolitica: item.descDetalle,
-        totalVotosValidos: parseInt(item.totalVotos?.replace(/,/g, '') || 0),
-        porcentajeVotosValidos: item.porcentaje,
-        incremental: 0 // Se calculará abajo
-      })).sort((a, b) => b.totalVotosValidos - a.totalVotosValidos);
-
-      // Calcular incrementales para resumen
-      if (lastSessionSnapshot && lastSessionSnapshot.summary && lastSessionSnapshot.summary.detalleVotos) {
-        detalleVotos.forEach(item => {
-          const prev = lastSessionSnapshot.summary.detalleVotos.find(d => d.descDetalle === item.nombreAgrupacionPolitica);
-          if (prev) {
-            const prevVotos = parseInt(prev.totalVotos?.replace(/,/g, '') || 0);
-            item.incremental = item.totalVotosValidos - prevVotos;
-          }
-        });
-      }
-
-      const summary = {
-        ...summaryData,
-        detalleVotosProcessed: detalleVotos
-      };
-
-      // Actualizar historial si es necesario
-      updateHistory(allSorted, summary.actasContabilizadas, summary);
+      updateHistory(allSorted, actasPct, summaryData);
 
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(
         JSON.stringify({
           success: true,
           dashboardUpdatedAt: new Date().toLocaleString("es-PE", { timeZone: "America/Lima" }),
-          onpeUpdatedAt: summary.fechaActualizacion,
+          onpeUpdatedAt: onpeTs,
           top3,
           others,
           history: historySnapshots,
-          actasContabilizadas: summary.actasContabilizadas,
-          summary,
+          actasContabilizadas: actasPct,
+          summary: { ...summaryData, detalleVotosProcessed: allSorted } // Para compatibilidad de gráficas
         })
       );
     } catch (error) {
