@@ -28,6 +28,8 @@ function updateHistory(currentData, actasPercent, summaryData) {
     timestamp: new Date().toLocaleTimeString("es-PE", { 
       hour: '2-digit', 
       minute: '2-digit', 
+      second: '2-digit',
+      hour12: true,
       timeZone: "America/Lima" 
     }),
     actasPercent: String(actasPercent),
@@ -68,26 +70,28 @@ try {
     const data = fs.readFileSync(HISTORY_FILE, "utf-8");
     const rawSnapshots = JSON.parse(data);
 
-    // RUTINA DE LIMPIEZA: Filtramos basura histórica
-    historySnapshots = rawSnapshots.filter((snap, index) => {
+    // RUTINA DE LIMPIEZA: Filtramos basura histórica y FUSIONAMOS duplicados
+    const uniqueSnaps = [];
+    rawSnapshots.forEach((snap) => {
       const p = snap.actasPercent ? parseFloat(String(snap.actasPercent).replace('%', '')) : 0;
-      if (p === 0) return false;
+      if (p === 0) return; // Fuera los ceros
 
-      // Si es igual al anterior en % y votos, es un duplicado innecesario
-      if (index > 0) {
-        const prev = rawSnapshots[index - 1];
-        if (String(snap.actasPercent) === String(prev.actasPercent) && snap.totalVotes === prev.totalVotes) {
-          return false;
-        }
+      const isDuplicate = uniqueSnaps.some(s => 
+        String(s.actasPercent) === String(snap.actasPercent) && 
+        s.totalVotes === snap.totalVotes
+      );
+
+      if (!isDuplicate) {
+        uniqueSnaps.push(snap);
       }
-      return true;
     });
+    historySnapshots = uniqueSnaps;
 
     if (historySnapshots.length > 0) {
       const last = historySnapshots[historySnapshots.length - 1];
       lastActasPercent = String(last.actasPercent);
       lastTotalVotes = last.totalVotes || -1;
-      console.log(`Historial cargado y LIMPIADO: ${historySnapshots.length} capturas reales.`);
+      console.log(`Historial cargado, LIMPIADO y DESDUPLICADO: ${historySnapshots.length} capturas.`);
     }
   }
 } catch (err) {
