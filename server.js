@@ -70,32 +70,43 @@ try {
     const data = fs.readFileSync(HISTORY_FILE, "utf-8");
     const rawSnapshots = JSON.parse(data);
 
-    // RUTINA DE LIMPIEZA: Filtramos basura histórica y FUSIONAMOS duplicados
+    // RUTINA DE LIMPIEZA AGRESIVA: Normalizamos y desduplicamos
     const uniqueSnaps = [];
+    const seenKeys = new Set();
+
     rawSnapshots.forEach((snap) => {
-      const p = snap.actasPercent ? parseFloat(String(snap.actasPercent).replace('%', '')) : 0;
-      if (p === 0) return; // Fuera los ceros
+      // Normalizar porcentaje (quitar %, espacios y forzar a string limpio)
+      const cleanPct = String(snap.actasPercent || "0").replace(/%/g, "").trim();
+      const p = parseFloat(cleanPct);
+      
+      if (isNaN(p) || p <= 0) return; // Fuera datos corruptos o ceros
 
-      const isDuplicate = uniqueSnaps.some(s => 
-        String(s.actasPercent) === String(snap.actasPercent) && 
-        s.totalVotes === snap.totalVotes
-      );
+      // Crear una llave única basada en datos reales, no en el formato de la hora
+      const totalV = parseInt(snap.totalVotes || 0);
+      const key = `${cleanPct}_${totalV}`;
 
-      if (!isDuplicate) {
-        uniqueSnaps.push(snap);
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        // Estandarizamos el objeto para asegurar que tiene todos los campos
+        uniqueSnaps.push({
+          ...snap,
+          actasPercent: cleanPct + "%",
+          totalVotes: totalV
+        });
       }
     });
+
     historySnapshots = uniqueSnaps;
 
     if (historySnapshots.length > 0) {
       const last = historySnapshots[historySnapshots.length - 1];
       lastActasPercent = String(last.actasPercent);
       lastTotalVotes = last.totalVotes || -1;
-      console.log(`Historial cargado, LIMPIADO y DESDUPLICADO: ${historySnapshots.length} capturas.`);
+      console.log(`SUPER-LIMPIEZA: ${historySnapshots.length} capturas únicas conservadas.`);
     }
   }
 } catch (err) {
-  console.error("Error cargando/limpiando historial:", err);
+  console.error("Error en Súper-Limpieza:", err);
 }
 
 const ONPE_RESULTS_URL =
