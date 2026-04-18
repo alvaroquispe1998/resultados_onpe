@@ -70,8 +70,8 @@ try {
 
     // RUTINA DE LIMPIEZA: Filtramos basura histórica
     historySnapshots = rawSnapshots.filter((snap, index) => {
-      const isProgressZero = !snap.actasPercent || snap.actasPercent === "0" || parseFloat(snap.actasPercent) === 0;
-      if (isProgressZero) return false;
+      const p = snap.actasPercent ? parseFloat(String(snap.actasPercent).replace('%', '')) : 0;
+      if (p === 0) return false;
 
       // Si es igual al anterior en % y votos, es un duplicado innecesario
       if (index > 0) {
@@ -763,59 +763,68 @@ function htmlPage() {
 
       initChart(rawHistory.map(s => s.timestamp), datasets, "Nuevos Votos");
       
-      // ANÁLISIS DE BRECHAS (INTERESANTE)
+      // ANÁLISIS DE BRECHAS EN CASCADA
       let summaryHtml = "";
-      if (selectedCandidates.size >= 2) {
-          const allData = [...currentDataGlobal.top3, ...currentDataGlobal.others];
-          const sortedSelected = Array.from(selectedCandidates).map(name => {
-              const c = allData.find(r => r.nombreAgrupacionPolitica === name);
-              return { name, votos: c ? c.totalVotosValidos : 0 };
-          }).sort((a,b) => b.votos - a.votos);
+      if (sortedSelected.length >= 2) {
+          for (let i = 0; i < sortedSelected.length - 1; i++) {
+              const c1 = sortedSelected[i];
+              const c2 = sortedSelected[i+1];
+              const gapActual = c1.votos - c2.votos;
 
-          const c1 = sortedSelected[0];
-          const c2 = sortedSelected[1];
-          const gapActual = c1.votos - c2.votos;
+              const lastSnap = rawHistory[rawHistory.length - 1];
+              const prevSnap = rawHistory[rawHistory.length - 2];
+              
+              let gapSnapshot = 0;
+              let gapAnterior = 0;
+              let hasHistory = false;
 
-          // Buscar brecha en el snapshot anterior
-          const lastSnap = rawHistory[rawHistory.length - 1];
-          const prevSnap = rawHistory[rawHistory.length - 2];
-          
-          if (lastSnap && prevSnap) {
-              const getVotos = (snap, name) => {
-                  let c = snap.results.find(r => r.name === name);
-                  if (!c && snap.summary && snap.summary.detalleVotosProcessed) {
-                      c = snap.summary.detalleVotosProcessed.find(d => d.nombreAgrupacionPolitica === name);
-                  }
-                  return c ? (c.votos || c.totalVotosValidos) : 0;
-              };
+              if (lastSnap && prevSnap) {
+                  const getVotos = (snap, name) => {
+                      let c = snap.results.find(r => r.name === name);
+                      return c ? (c.votos || 0) : 0;
+                  };
+                  gapSnapshot = getVotos(lastSnap, c1.name) - getVotos(lastSnap, c2.name);
+                  gapAnterior = getVotos(prevSnap, c1.name) - getVotos(prevSnap, c2.name);
+                  hasHistory = true;
+              }
 
-              const gapSnapshot = getVotos(lastSnap, c1.name) - getVotos(lastSnap, c2.name);
-              const gapAnterior = getVotos(prevSnap, c1.name) - getVotos(prevSnap, c2.name);
               const diffBrecha = gapSnapshot - gapAnterior;
+              let icon = "⚡";
+              let title = "RECORTE DE DISTANCIA";
+              let color = "#10b981";
+              let bg = "rgba(16, 185, 129, 0.1)";
 
               if (diffBrecha > 0) {
-                  summaryHtml = \`<div style="background: rgba(14, 165, 233, 0.1); padding: 16px; border-radius: 12px; border-left: 4px solid var(--accent); margin-top: 20px;">
-                    <strong style="color: var(--accent); display: block; margin-bottom: 4px;">🎯 ANÁLISIS DE BRECHA</strong>
-                    <span style="font-size: 15px; color: #334155;">
-                        <b>\${c1.name}</b> estiró su ventaja sobre <b>\${c2.name}</b> por <b>\${formatNumber(diffBrecha)}</b> votos en el último tramo. 
-                        La distancia actual es de <b>\${formatNumber(gapActual)}</b> votos.
-                    </span>
-                  </div>\`;
-              } else if (diffBrecha < 0) {
-                  summaryHtml = \`<div style="background: rgba(16, 185, 129, 0.1); padding: 16px; border-radius: 12px; border-left: 4px solid var(--emerald); margin-top: 20px;">
-                    <strong style="color: var(--emerald); display: block; margin-bottom: 4px;">⚡ RECORTE DE DISTANCIA</strong>
-                    <span style="font-size: 15px; color: #334155;">
-                        <b>\${c2.name}</b> acortó la brecha con <b>\${c1.name}</b> en <b>\${formatNumber(Math.abs(diffBrecha))}</b> votos. 
-                        La distancia actual se redujo a <b>\${formatNumber(gapActual)}</b> votos.
-                    </span>
-                  </div>\`;
-              } else {
-                  summaryHtml = \`<p style="text-align:center; color:#64748b; margin-top:20px;">La brecha entre los líderes se mantiene estable (diferencia de \${formatNumber(gapActual)} votos).</p>\`;
+                  icon = "📈";
+                  title = "BRECHA AMPLIADA";
+                  color = "#f43f5e";
+                  bg = "rgba(244, 63, 94, 0.1)";
+              } else if (hasHistory && diffBrecha === 0) {
+                  icon = "⚖️";
+                  title = "BRECHA ESTABLE";
+                  color = "#64748b";
+                  bg = "rgba(100, 116, 139, 0.1)";
               }
+
+              summaryHtml += `
+                <div style="background: ${bg}; padding: 18px; border-radius: 12px; border-left: 5px solid ${color}; margin-bottom: 15px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                  <div style="color: ${color}; font-weight: 800; font-size: 13px; margin-bottom: 6px; letter-spacing: 0.5px;">${icon} ${title}</div>
+                  <div style="font-size: 15.5px; line-height: 1.5; color: #1e293b;">
+                    <strong>${c1.name}</strong> vs <strong>${c2.name}</strong>: 
+                    La brecha actual es de <strong>${formatNumber(gapActual)}</strong> votos.
+                    ${hasHistory ? `<br><span style="font-size: 14px; color: #64748b;">En el último tramo, la distancia se <strong>${diffBrecha > 0 ? 'estiró' : 'acortó'}</strong> en <strong>${formatNumber(Math.abs(diffBrecha))}</strong> votos.</span>` : ''}
+                  </div>
+                </div>
+              `;
           }
       }
 
-      body.innerHTML = summaryHtml || \`<p style="text-align:center; color:#94a3b8; padding:40px;">El gráfico muestra cuántos votos ganó cada candidato en cada tramo de la historia.</p>\`;
+      body.innerHTML = \`
+        <div style="height: 320px; margin-bottom: 25px; width: 100%;">
+          <canvas id="historyChart"></canvas>
+        </div>
+        <div style="width: 100%; display: flex; flex-direction: column;">\${summaryHtml}</div>
+      \`;
       modal.style.display = "flex";
     }
 
