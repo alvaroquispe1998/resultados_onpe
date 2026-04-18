@@ -12,10 +12,17 @@ let lastActasPercent = -1;
 let lastTotalVotes = -1;
 
 function updateHistory(currentData, actasPercent, summaryData) {
+  if (!currentData || currentData.length === 0) return;
+  
   const totalVotes = currentData.reduce((acc, item) => acc + (item.totalVotosValidos || 0), 0);
   
-  // Si no hay cambios en nada, no hacer nada
-  if (actasPercent === lastActasPercent && totalVotes === lastTotalVotes) return;
+  // SEGURIDAD: Nunca guardar si el porcentaje es 0 o vacío (error de fetch de la ONPE)
+  if (!actasPercent || actasPercent === "0" || parseFloat(actasPercent) === 0) return;
+
+  // Si la data es EXACTAMENTE igual al último registro (sin cambios en votos ni %), ignorar
+  if (String(actasPercent) === String(lastActasPercent) && totalVotes === lastTotalVotes) {
+    return;
+  }
 
   const snapshot = {
     timestamp: new Date().toLocaleTimeString("es-PE", { 
@@ -23,9 +30,9 @@ function updateHistory(currentData, actasPercent, summaryData) {
       minute: '2-digit', 
       timeZone: "America/Lima" 
     }),
-    actasPercent: actasPercent,
+    actasPercent: String(actasPercent),
     totalVotes: totalVotes,
-    summary: summaryData, // Guardar también el resumen para sus incrementales
+    summary: summaryData,
     results: currentData.map(item => ({
       name: item.nombreAgrupacionPolitica,
       votos: item.totalVotosValidos,
@@ -34,13 +41,15 @@ function updateHistory(currentData, actasPercent, summaryData) {
     }))
   };
 
-  if (actasPercent === lastActasPercent && totalVotes > lastTotalVotes && historySnapshots.length > 0) {
+  // Si el porcentaje es el mismo pero los votos subieron, ACTUALIZAMOS el último en vez de crear uno nuevo
+  // Esto evita tener 10 filas con el mismo % de actas si solo cambiaron unos pocos votos
+  if (String(actasPercent) === String(lastActasPercent) && historySnapshots.length > 0) {
     historySnapshots[historySnapshots.length - 1] = snapshot;
   } else {
     historySnapshots.push(snapshot);
   }
 
-  lastActasPercent = actasPercent;
+  lastActasPercent = String(actasPercent);
   lastTotalVotes = totalVotes;
 
   
