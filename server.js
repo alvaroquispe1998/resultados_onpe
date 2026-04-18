@@ -18,13 +18,15 @@ function updateHistory(currentData, actasPercent, summaryData) {
   
   const norm = (v) => String(v || "0").replace(/%/g, "").trim();
   const cleanPct = norm(actasPercent);
+  const totalV = parseInt(totalVotes || 0);
   
   if (parseFloat(cleanPct) <= 0) return;
 
-  // Si es IGUAL al último registro (votos y %), ignorar
-  if (cleanPct === norm(lastActasPercent) && totalVotes === lastTotalVotes) {
-    return;
-  }
+  // HUELLA DIGITAL: Si no hay cambios reales en % ni en Votos, NO HACER NADA
+  const currentKey = `${cleanPct}_${totalV}`;
+  const lastKey = `${norm(lastActasPercent)}_${lastTotalVotes}`;
+  
+  if (currentKey === lastKey) return;
 
   const snapshot = {
     timestamp: new Date().toLocaleTimeString("es-PE", { 
@@ -32,7 +34,7 @@ function updateHistory(currentData, actasPercent, summaryData) {
       hour12: true, timeZone: "America/Lima" 
     }),
     actasPercent: cleanPct + "%",
-    totalVotes: totalVotes,
+    totalVotes: totalV,
     summary: summaryData,
     results: currentData.map(item => ({
       name: item.nombreAgrupacionPolitica,
@@ -42,15 +44,20 @@ function updateHistory(currentData, actasPercent, summaryData) {
     }))
   };
 
-  // Si el % es igual pero subieron los votos, actualizamos el último
+  // Si el % es EXACTAMENTE el mismo al último registro, FUSIONAR siempre
   if (cleanPct === norm(lastActasPercent) && historySnapshots.length > 0) {
+    // Si además los votos son iguales, no hacemos nada (ahorro de disco)
+    if (totalV === lastTotalVotes) return;
+    
+    // Actualizamos el registro existente con los nuevos votos
     historySnapshots[historySnapshots.length - 1] = snapshot;
   } else {
+    // Solo si el porcentaje es distinto, agregamos una nueva fila
     historySnapshots.push(snapshot);
   }
 
   lastActasPercent = cleanPct + "%";
-  lastTotalVotes = totalVotes;
+  lastTotalVotes = totalV;
 
   
   if (historySnapshots.length > 2000) historySnapshots.shift();
@@ -94,7 +101,9 @@ try {
       const last = historySnapshots[historySnapshots.length - 1];
       lastActasPercent = last.actasPercent;
       lastTotalVotes = last.totalVotes;
-      console.log(`LIMPIEZA TOTAL: ${historySnapshots.length} capturas únicas conservadas.`);
+      console.log(`LIMPIEZA TOTAL: ${historySnapshots.length} únicas. Guardando archivo limpio...`);
+      // PERSISTIR LA LIMPIEZA
+      fs.writeFileSync(HISTORY_FILE, JSON.stringify(historySnapshots), "utf-8");
     }
   }
 } catch (err) {
