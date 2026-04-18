@@ -806,16 +806,14 @@ function htmlPage() {
                   bg = "rgba(100, 116, 139, 0.1)";
               }
 
-              summaryHtml += `
-                <div style="background: ${bg}; padding: 18px; border-radius: 12px; border-left: 5px solid ${color}; margin-bottom: 15px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
-                  <div style="color: ${color}; font-weight: 800; font-size: 13px; margin-bottom: 6px; letter-spacing: 0.5px;">${icon} ${title}</div>
-                  <div style="font-size: 15.5px; line-height: 1.5; color: #1e293b;">
-                    <strong>${c1.name}</strong> vs <strong>${c2.name}</strong>: 
-                    La brecha actual es de <strong>${formatNumber(gapActual)}</strong> votos.
-                    ${hasHistory ? `<br><span style="font-size: 14px; color: #64748b;">En el último tramo, la distancia se <strong>${diffBrecha > 0 ? 'estiró' : 'acortó'}</strong> en <strong>${formatNumber(Math.abs(diffBrecha))}</strong> votos.</span>` : ''}
-                  </div>
-                </div>
-              `;
+              summaryHtml += '<div style="background: ' + bg + '; padding: 18px; border-radius: 12px; border-left: 5px solid ' + color + '; margin-bottom: 15px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">' +
+                '<div style="color: ' + color + '; font-weight: 800; font-size: 13px; margin-bottom: 6px; letter-spacing: 0.5px;">' + icon + ' ' + title + '</div>' +
+                '<div style="font-size: 15.5px; line-height: 1.5; color: #1e293b;">' +
+                  '<strong>' + c1.name + '</strong> vs <strong>' + c2.name + '</strong>: ' +
+                  'La brecha actual es de <strong>' + formatNumber(gapActual) + '</strong> votos.' +
+                  (hasHistory ? '<br><span style="font-size: 14px; color: #64748b;">En el último tramo, la distancia se <strong>' + (diffBrecha > 0 ? 'estiró' : 'acortó') + '</strong> en <strong>' + formatNumber(Math.abs(diffBrecha)) + '</strong> votos.</span>' : '') +
+                '</div>' +
+              '</div>';
           }
       }
 
