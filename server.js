@@ -22,17 +22,19 @@ function updateHistory(currentData, actasPercent, summaryData) {
   
   if (parseFloat(cleanPct) <= 0) return;
 
-  // HUELLA DIGITAL: Si no hay cambios reales en % ni en Votos, NO HACER NADA
-  const currentKey = `${cleanPct}_${totalV}`;
-  const lastKey = `${norm(lastActasPercent)}_${lastTotalVotes}`;
-  
-  if (currentKey === lastKey) return;
+  // FORMATO DE HORA MANUAL ROBUSTO (HH:mm:ss p. m.)
+  const d = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Lima"}));
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const s = String(d.getSeconds()).padStart(2, "0");
+  const ampm = h >= 12 ? "p. m." : "a. m.";
+  h = h % 12;
+  h = h ? h : 12; 
+  const hh = String(h).padStart(2, "0");
+  const timeStr = `${hh}:${m}:${s} ${ampm}`;
 
   const snapshot = {
-    timestamp: new Date().toLocaleTimeString("es-PE", { 
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-      hour12: true, timeZone: "America/Lima" 
-    }),
+    timestamp: timeStr,
     actasPercent: cleanPct + "%",
     totalVotes: totalV,
     summary: summaryData,
@@ -44,15 +46,12 @@ function updateHistory(currentData, actasPercent, summaryData) {
     }))
   };
 
-  // Si el % es EXACTAMENTE el mismo al último registro, FUSIONAR siempre
+  // Si el % es EXACTAMENTE el mismo al último registro, SOBRESCRIBIRLO siempre
+  // Regla absoluta: Solo un registro por cada % de actas.
   if (cleanPct === norm(lastActasPercent) && historySnapshots.length > 0) {
-    // Si además los votos son iguales, no hacemos nada (ahorro de disco)
-    if (totalV === lastTotalVotes) return;
-    
-    // Actualizamos el registro existente con los nuevos votos
+    if (totalV === lastTotalVotes) return; // Si nada avanzó, ni sobre-escribimos
     historySnapshots[historySnapshots.length - 1] = snapshot;
   } else {
-    // Solo si el porcentaje es distinto, agregamos una nueva fila
     historySnapshots.push(snapshot);
   }
 
@@ -76,27 +75,32 @@ try {
     const rawSnapshots = JSON.parse(data);
 
     // RUTINA DE LIMPIEZA MAESTRA: Normaliza y Elimina basura.
-    const uniqueSnaps = [];
-    const seen = new Set();
+    const mapSnaps = new Map();
     const normalize = (v) => String(v || "0").replace(/%/g, "").trim();
 
     rawSnapshots.forEach((snap) => {
       const pStr = normalize(snap.actasPercent);
       const p = parseFloat(pStr);
-      const totalV = parseInt(snap.totalVotes || 0);
-      const key = `${pStr}_${totalV}`;
+      if (isNaN(p) || p <= 0) return;
 
-      if (p > 0 && !seen.has(key)) {
-        seen.add(key);
-        uniqueSnaps.push({
-          ...snap,
-          actasPercent: pStr + "%",
-          totalVotes: totalV
-        });
+      let timeStr = snap.timestamp || "";
+      // Forzar formato 08:xx:xx si empieza con un solo dígito
+      if (/^\d:\d\d:\d\d/.test(timeStr)) {
+        timeStr = "0" + timeStr;
       }
+
+      // Al usar Map y de llave solo el porcentaje, GARANTIZAMOS una sola fila por %
+      // Mantendrá la versión más reciente (última en aparecer en el array original)
+      mapSnaps.set(pStr, {
+        ...snap,
+        timestamp: timeStr,
+        actasPercent: pStr + "%",
+        totalVotes: parseInt(snap.totalVotes || 0)
+      });
     });
 
-    historySnapshots = uniqueSnaps;
+    historySnapshots = Array.from(mapSnaps.values());
+    
     if (historySnapshots.length > 0) {
       const last = historySnapshots[historySnapshots.length - 1];
       lastActasPercent = last.actasPercent;
