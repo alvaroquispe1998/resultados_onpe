@@ -66,16 +66,32 @@ function updateHistory(currentData, actasPercent, summaryData) {
 try {
   if (fs.existsSync(HISTORY_FILE)) {
     const data = fs.readFileSync(HISTORY_FILE, "utf-8");
-    historySnapshots = JSON.parse(data);
+    const rawSnapshots = JSON.parse(data);
+
+    // RUTINA DE LIMPIEZA: Filtramos basura histórica
+    historySnapshots = rawSnapshots.filter((snap, index) => {
+      const isProgressZero = !snap.actasPercent || snap.actasPercent === "0" || parseFloat(snap.actasPercent) === 0;
+      if (isProgressZero) return false;
+
+      // Si es igual al anterior en % y votos, es un duplicado innecesario
+      if (index > 0) {
+        const prev = rawSnapshots[index - 1];
+        if (String(snap.actasPercent) === String(prev.actasPercent) && snap.totalVotes === prev.totalVotes) {
+          return false;
+        }
+      }
+      return true;
+    });
+
     if (historySnapshots.length > 0) {
       const last = historySnapshots[historySnapshots.length - 1];
-      lastActasPercent = last.actasPercent;
+      lastActasPercent = String(last.actasPercent);
       lastTotalVotes = last.totalVotes || -1;
-      console.log(`Historial cargado: ${historySnapshots.length} capturas.`);
+      console.log(`Historial cargado y LIMPIADO: ${historySnapshots.length} capturas reales.`);
     }
   }
 } catch (err) {
-  console.error("Error cargando historial:", err);
+  console.error("Error cargando/limpiando historial:", err);
 }
 
 const ONPE_RESULTS_URL =
@@ -1069,12 +1085,15 @@ const server = http.createServer(async (req, res) => {
       }));
 
       const top3Names = new Set(top3.map(x => x.nombreAgrupacionPolitica));
-      const others = allSorted
-        .filter(x => !top3Names.has(x.nombreAgrupacionPolitica))
-        .map(item => ({
-          ...item,
-          incremental: getIncremental(item.nombreAgrupacionPolitica, item.totalVotosValidos)
-        }));
+      const remainingOthers = allSorted.filter(x => !top3Names.has(x.nombreAgrupacionPolitica));
+      
+      const remainingParties = remainingOthers.filter(x => !isSpecial(x.nombreAgrupacionPolitica));
+      const specialEntries = remainingOthers.filter(x => isSpecial(x.nombreAgrupacionPolitica));
+
+      const others = [...remainingParties, ...specialEntries].map(item => ({
+        ...item,
+        incremental: getIncremental(item.nombreAgrupacionPolitica, item.totalVotosValidos)
+      }));
 
       updateHistory(allSorted, actasPct, summaryData);
 
@@ -1088,7 +1107,7 @@ const server = http.createServer(async (req, res) => {
           others,
           history: historySnapshots,
           actasContabilizadas: actasPct,
-          summary: { ...summaryData, detalleVotosProcessed: allSorted } // Para compatibilidad de gráficas
+          summary: { ...summaryData, detalleVotosProcessed: allSorted }
         })
       );
     } catch (error) {
