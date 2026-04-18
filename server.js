@@ -16,23 +16,22 @@ function updateHistory(currentData, actasPercent, summaryData) {
   
   const totalVotes = currentData.reduce((acc, item) => acc + (item.totalVotosValidos || 0), 0);
   
-  // SEGURIDAD: Nunca guardar si el porcentaje es 0 o vacío (error de fetch de la ONPE)
-  if (!actasPercent || actasPercent === "0" || parseFloat(actasPercent) === 0) return;
+  const norm = (v) => String(v || "0").replace(/%/g, "").trim();
+  const cleanPct = norm(actasPercent);
+  
+  if (parseFloat(cleanPct) <= 0) return;
 
-  // Si la data es EXACTAMENTE igual al último registro (sin cambios en votos ni %), ignorar
-  if (String(actasPercent) === String(lastActasPercent) && totalVotes === lastTotalVotes) {
+  // Si es IGUAL al último registro (votos y %), ignorar
+  if (cleanPct === norm(lastActasPercent) && totalVotes === lastTotalVotes) {
     return;
   }
 
   const snapshot = {
     timestamp: new Date().toLocaleTimeString("es-PE", { 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit',
-      hour12: true,
-      timeZone: "America/Lima" 
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: true, timeZone: "America/Lima" 
     }),
-    actasPercent: String(actasPercent),
+    actasPercent: cleanPct + "%",
     totalVotes: totalVotes,
     summary: summaryData,
     results: currentData.map(item => ({
@@ -43,15 +42,14 @@ function updateHistory(currentData, actasPercent, summaryData) {
     }))
   };
 
-  // Si el porcentaje es el mismo pero los votos subieron, ACTUALIZAMOS el último en vez de crear uno nuevo
-  // Esto evita tener 10 filas con el mismo % de actas si solo cambiaron unos pocos votos
-  if (String(actasPercent) === String(lastActasPercent) && historySnapshots.length > 0) {
+  // Si el % es igual pero subieron los votos, actualizamos el último
+  if (cleanPct === norm(lastActasPercent) && historySnapshots.length > 0) {
     historySnapshots[historySnapshots.length - 1] = snapshot;
   } else {
     historySnapshots.push(snapshot);
   }
 
-  lastActasPercent = String(actasPercent);
+  lastActasPercent = cleanPct + "%";
   lastTotalVotes = totalVotes;
 
   
@@ -70,39 +68,33 @@ try {
     const data = fs.readFileSync(HISTORY_FILE, "utf-8");
     const rawSnapshots = JSON.parse(data);
 
-    // RUTINA DE LIMPIEZA AGRESIVA: Normalizamos y desduplicamos
+    // RUTINA DE LIMPIEZA MAESTRA: Normaliza y Elimina basura.
     const uniqueSnaps = [];
-    const seenKeys = new Set();
+    const seen = new Set();
+    const normalize = (v) => String(v || "0").replace(/%/g, "").trim();
 
     rawSnapshots.forEach((snap) => {
-      // Normalizar porcentaje (quitar %, espacios y forzar a string limpio)
-      const cleanPct = String(snap.actasPercent || "0").replace(/%/g, "").trim();
-      const p = parseFloat(cleanPct);
-      
-      if (isNaN(p) || p <= 0) return; // Fuera datos corruptos o ceros
-
-      // Crear una llave única basada en datos reales, no en el formato de la hora
+      const pStr = normalize(snap.actasPercent);
+      const p = parseFloat(pStr);
       const totalV = parseInt(snap.totalVotes || 0);
-      const key = `${cleanPct}_${totalV}`;
+      const key = `${pStr}_${totalV}`;
 
-      if (!seenKeys.has(key)) {
-        seenKeys.add(key);
-        // Estandarizamos el objeto para asegurar que tiene todos los campos
+      if (p > 0 && !seen.has(key)) {
+        seen.add(key);
         uniqueSnaps.push({
           ...snap,
-          actasPercent: cleanPct + "%",
+          actasPercent: pStr + "%",
           totalVotes: totalV
         });
       }
     });
 
     historySnapshots = uniqueSnaps;
-
     if (historySnapshots.length > 0) {
       const last = historySnapshots[historySnapshots.length - 1];
-      lastActasPercent = String(last.actasPercent);
-      lastTotalVotes = last.totalVotes || -1;
-      console.log(`SUPER-LIMPIEZA: ${historySnapshots.length} capturas únicas conservadas.`);
+      lastActasPercent = last.actasPercent;
+      lastTotalVotes = last.totalVotes;
+      console.log(`LIMPIEZA TOTAL: ${historySnapshots.length} capturas únicas conservadas.`);
     }
   }
 } catch (err) {
