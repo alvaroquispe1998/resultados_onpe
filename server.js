@@ -1064,9 +1064,20 @@ const server = http.createServer(async (req, res) => {
 
       const summaryData = summaryJson?.data || {};
 
-      // CABECERA: Sacamos progreso y tiempos del endpoint de Resumen General
-      const actasPct = summaryData.nuPorcentajeActasContabilizadas || "0";
-      const onpeTs = summaryData.feActualizacion || summaryData.fechaActualizacion || "---";
+      // EXTRACCIÓN BLINDADA: Buscamos en todas las variantes posibles de ambos endpoints
+      const getOnpeVal = (obj, keys) => {
+        for (const k of keys) {
+          if (obj && obj[k] && obj[k] !== "0" && obj[k] !== 0) return obj[k];
+        }
+        return null;
+      };
+
+      const keysPct = ["nuPorcentajeActasContabilizadas", "nuActasContabilizadas", "actasContabilizadas", "porcentajeActasContabilizadas"];
+      const keysTs = ["feActualizacion", "fechaActualizacion"];
+
+      // Priorizamos el resumen para la cabecera, pero si falla usamos presidenciales
+      const actasPct = getOnpeVal(summaryData, keysPct) || getOnpeVal(resultsJson, keysPct) || "---";
+      const onpeTs = getOnpeVal(summaryData, keysTs) || getOnpeVal(resultsJson, keysTs) || "---";
 
       // CUERPO: Sacamos candidatos y votos del endpoint de Presidenciales
       const isSpecial = (name) =>
