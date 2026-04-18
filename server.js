@@ -683,17 +683,19 @@ function htmlPage() {
 
       const lastSnapshot = filtered[filtered.length - 1];
       
+      const normFront = (v) => String(v || "").replace(/%/g, "").trim();
+
       // SOLO añadir "Ahora" si hay un cambio REAL respecto al último snapshot
       if (currentItem && lastSnapshot) {
           const currentVotos = currentItem.totalVotosValidos;
           const currentActas = currentDataGlobal.actasContabilizadas;
           
-          if (currentVotos !== lastSnapshot.candidate.votos || currentActas !== lastSnapshot.actas) {
+          if (currentVotos !== lastSnapshot.candidate.votos || normFront(currentActas) !== normFront(lastSnapshot.actas)) {
               // Extraer solo la hora de la actualización del sistema
               const systemTimeStr = currentDataGlobal.dashboardUpdatedAt.split(', ')[1] || "Recién";
               filtered.push({
                 time: systemTimeStr,
-                actas: currentActas,
+                actas: normFront(currentActas),
                 candidate: { votos: currentVotos }
               });
           }
@@ -701,7 +703,7 @@ function htmlPage() {
          const systemTimeStr = currentDataGlobal.dashboardUpdatedAt.split(', ')[1] || "Recién";
          filtered.push({
             time: systemTimeStr,
-            actas: currentDataGlobal.actasContabilizadas,
+            actas: normFront(currentDataGlobal.actasContabilizadas),
             candidate: { votos: currentItem.totalVotosValidos }
           });
       }
@@ -726,7 +728,7 @@ function htmlPage() {
         const diff = prev ? (cur.candidate.votos - prev.candidate.votos) : 0;
         rows.push(\`<tr>
           <td>\${cur.time}</td>
-          <td>\${cur.actas}%</td>
+          <td>\${normFront(cur.actas)}%</td>
           <td><strong>\${formatNumber(cur.candidate.votos)}</strong></td>
           <td style="color: \${diff > 0 ? '#10b981' : '#64748b'}">\${diff > 0 ? '+' : ''}\${formatNumber(diff)}</td>
         </tr>\`);
