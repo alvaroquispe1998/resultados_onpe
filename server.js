@@ -542,8 +542,9 @@ function htmlPage() {
       <div class="header-top">
         <div class="title-group">
           <h1>Dashboard Electoral ONPE</h1>
-          <div style="display: flex; gap: 16px; margin-top: 8px;">
+          <div style="display: flex; gap: 16px; margin-top: 8px; margin-bottom: 12px;">
             <button onclick="loadData()">Actualizar</button>
+            <button style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);" onclick="openSegundaVueltaChart()">📊 Ver Evolución de la Brecha</button>
           </div>
           <div style="display: flex; gap: 20px; flex-wrap: wrap;">
             <div id="onpe-update" class="status">OFICIAL ONPE: ...</div>
@@ -892,6 +893,170 @@ function htmlPage() {
                 beginAtZero: yLabel === "Nuevos Votos",
                 ticks: { callback: v => formatNumber(v), font: { family: 'Outfit' } },
                 title: { display: true, text: yLabel, font: { family: 'Outfit', weight: 'bold' } }
+            },
+            x: { ticks: { font: { family: 'Outfit' } } }
+          }
+        }
+      });
+    }
+
+    function openSegundaVueltaChart() {
+      if (!currentDataGlobal || !currentDataGlobal.top3 || currentDataGlobal.top3.length < 2) return;
+      destroyChart();
+      const modal = document.getElementById("history-modal");
+      const title = document.getElementById("modal-candidate-name");
+      const body = document.getElementById("history-body");
+      
+      const c1Name = currentDataGlobal.top3[0].nombreAgrupacionPolitica;
+      const c2Name = currentDataGlobal.top3[1].nombreAgrupacionPolitica;
+      
+      title.textContent = "Evolución y Brecha: " + c1Name + " vs " + c2Name;
+      
+      const labels = rawHistory.map(s => s.timestamp);
+      
+      const getVotos = (s, name) => {
+          let c = s.results.find(r => r.name === name);
+          if (!c && s.summary && s.summary.detalleVotosProcessed) {
+            c = s.summary.detalleVotosProcessed.find(d => d.nombreAgrupacionPolitica === name);
+          }
+          if (!c && s.summary && s.summary.detalleVotos) {
+             const d = s.summary.detalleVotos.find(d => d.descDetalle === name);
+             if (d) c = { votos: parseInt(d.totalVotos?.replace(/,/g, '') || 0) };
+          }
+          return c ? (c.votos || c.totalVotosValidos || 0) : null;
+      };
+      
+      let baseVotos1 = 0;
+      let baseVotos2 = 0;
+      if (rawHistory.length > 0) {
+        baseVotos1 = getVotos(rawHistory[0], c1Name) || 0;
+        baseVotos2 = getVotos(rawHistory[0], c2Name) || 0;
+      }
+
+      const data1 = rawHistory.map(s => (getVotos(s, c1Name) || 0) - baseVotos1);
+      const data2 = rawHistory.map(s => (getVotos(s, c2Name) || 0) - baseVotos2);
+      const gapData = rawHistory.map(s => Math.abs((getVotos(s, c1Name) || 0) - (getVotos(s, c2Name) || 0)));
+      
+      const datasets = [
+        {
+          label: c1Name + " (Nuevos Votos)",
+          data: data1,
+          borderColor: '#0ea5e9',
+          backgroundColor: '#0ea5e922',
+          tension: 0.2,
+          yAxisID: 'y'
+        },
+        {
+          label: c2Name + " (Nuevos Votos)",
+          data: data2,
+          borderColor: '#f97316',
+          backgroundColor: '#f9731622',
+          tension: 0.2,
+          yAxisID: 'y'
+        },
+        {
+          type: 'bar',
+          label: 'Brecha de Votos',
+          data: gapData,
+          backgroundColor: '#10b98188',
+          borderColor: '#10b981',
+          borderWidth: 1,
+          yAxisID: 'y1'
+        }
+      ];
+      
+      initDualChart(labels, datasets);
+      
+      let summaryHtml = "";
+      const c1 = { name: c1Name, votos: currentDataGlobal.top3[0].totalVotosValidos };
+      const c2 = { name: c2Name, votos: currentDataGlobal.top3[1].totalVotosValidos };
+      const gapActual = Math.abs(c1.votos - c2.votos);
+
+      const lastSnap = rawHistory[rawHistory.length - 1];
+      const prevSnap = rawHistory[rawHistory.length - 2];
+      
+      let gapSnapshot = 0;
+      let gapAnterior = 0;
+      let hasHistory = false;
+
+      if (lastSnap && prevSnap) {
+          gapSnapshot = Math.abs((getVotos(lastSnap, c1.name)||0) - (getVotos(lastSnap, c2.name)||0));
+          gapAnterior = Math.abs((getVotos(prevSnap, c1.name)||0) - (getVotos(prevSnap, c2.name)||0));
+          hasHistory = true;
+      }
+
+      const diffBrecha = gapSnapshot - gapAnterior;
+      let icon = "⚡";
+      let titleHtml = "RECORTE DE DISTANCIA";
+      let color = "#10b981";
+      let bg = "rgba(16, 185, 129, 0.1)";
+
+      if (diffBrecha > 0) {
+          icon = "📈";
+          titleHtml = "BRECHA AMPLIADA";
+          color = "#f43f5e";
+          bg = "rgba(244, 63, 94, 0.1)";
+      } else if (hasHistory && diffBrecha === 0) {
+          icon = "⚖️";
+          titleHtml = "BRECHA ESTABLE";
+          color = "#64748b";
+          bg = "rgba(100, 116, 139, 0.1)";
+      }
+
+      summaryHtml += '<div style="background: ' + bg + '; padding: 18px; border-radius: 12px; border-left: 5px solid ' + color + '; margin-bottom: 15px; width: 100%; box-sizing: border-box; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">' +
+        '<div style="color: ' + color + '; font-weight: 800; font-size: 13px; margin-bottom: 6px; letter-spacing: 0.5px;">' + icon + ' ' + titleHtml + '</div>' +
+        '<div style="font-size: 15.5px; line-height: 1.5; color: #1e293b;">' +
+          '<strong>' + c1.name + '</strong> vs <strong>' + c2.name + '</strong>: ' +
+          'La brecha actual es de <strong>' + formatNumber(gapActual) + '</strong> votos.' +
+          (hasHistory ? '<br><span style="font-size: 14px; color: #64748b;">En el último tramo, la distancia se <strong>' + (diffBrecha > 0 ? 'estiró' : 'acortó') + '</strong> en <strong>' + formatNumber(Math.abs(diffBrecha)) + '</strong> votos.</span>' : '') +
+        '</div>' +
+      '</div>';
+
+      document.getElementById("history-table").style.display = "none";
+      const summaryDiv = document.getElementById("comparison-summary");
+      summaryDiv.style.display = "flex";
+      summaryDiv.innerHTML = summaryHtml;
+      
+      modal.style.display = "flex";
+    }
+
+    function initDualChart(labels, datasets) {
+      const ctx = document.getElementById('historyChart').getContext('2d');
+      myChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { intersect: false, mode: 'index' },
+          plugins: { 
+            legend: { position: 'bottom', labels: { boxWidth: 12, font: { family: 'Outfit', size: 11, weight: '600' } } },
+            tooltip: {
+                backgroundColor: '#0f172a',
+                titleFont: { family: 'Outfit', size: 13 },
+                bodyFont: { family: 'Outfit', size: 12 },
+                padding: 12,
+                cornerRadius: 10,
+                callbacks: {
+                    label: (context) => " " + context.dataset.label + ": " + formatNumber(context.parsed.y) + " votos"
+                }
+            }
+          },
+          scales: {
+            y: { 
+                type: 'linear',
+                display: true,
+                position: 'left',
+                beginAtZero: true,
+                ticks: { callback: v => formatNumber(v), font: { family: 'Outfit' } },
+                title: { display: true, text: "Nuevos Votos", font: { family: 'Outfit', weight: 'bold' } }
+            },
+            y1: { 
+                type: 'linear',
+                display: true,
+                position: 'right',
+                grid: { drawOnChartArea: false },
+                ticks: { callback: v => formatNumber(v), font: { family: 'Outfit' } },
+                title: { display: true, text: "Brecha (Total)", font: { family: 'Outfit', weight: 'bold' } }
             },
             x: { ticks: { font: { family: 'Outfit' } } }
           }
