@@ -115,10 +115,10 @@ try {
 }
 
 const ONPE_RESULTS_URL =
-  "https://resultadoelectoral.onpe.gob.pe/presentacion-backend/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion";
+  "https://resultadosegundavuelta.onpe.gob.pe/presentacion-backend/resumen-general/participantes?idEleccion=10&tipoFiltro=eleccion";
 
 const ONPE_SUMMARY_URL =
-  "https://resultadoelectoral.onpe.gob.pe/presentacion-backend/resumen-general/totales?idEleccion=10&tipoFiltro=eleccion";
+  "https://resultadosegundavuelta.onpe.gob.pe/presentacion-backend/resumen-general/totales?idEleccion=10&tipoFiltro=eleccion";
 
 function fetchFromOnpe(targetUrl) {
   return new Promise((resolve, reject) => {
@@ -133,15 +133,15 @@ function fetchFromOnpe(targetUrl) {
         "accept-language": "en-US,en;q=0.9,es-PE;q=0.8,es-ES;q=0.7,es-MX;q=0.6,es;q=0.5",
         "content-type": "application/json",
         "priority": "u=1, i",
-        "referer": "https://resultadoelectoral.onpe.gob.pe/main/presidenciales",
-        "sec-ch-ua": `"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"`,
+        "referer": "https://resultadosegundavuelta.onpe.gob.pe/main/resumen",
+        "sec-ch-ua": `"Microsoft Edge";v="149", "Chromium";v="149", "Not)A;Brand";v="24"`,
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": `"Windows"`,
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-origin",
         "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
       },
     };
 
