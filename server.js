@@ -580,6 +580,10 @@ function htmlPage() {
           <span id="actas-percent">0%</span>
         </div>
         <div class="progress-bar-bg"><div id="progress-fill" class="progress-bar-fill"></div></div>
+        <div style="display: flex; justify-content: flex-end; gap: 24px; margin-top: 10px; font-size: 13px; color: #64748b;">
+          <div><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#f59e0b; margin-right:6px;"></span>Enviadas al JEE: <strong id="jee-enviadas" style="color: #475569;">...</strong> (<span id="jee-enviadas-pct">...</span>%)</div>
+          <div><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#ef4444; margin-right:6px;"></span>Pendientes al JEE: <strong id="jee-pendientes" style="color: #475569;">...</strong> (<span id="jee-pendientes-pct">...</span>%)</div>
+        </div>
       </div>
     </header>
 
@@ -1131,8 +1135,15 @@ function htmlPage() {
       document.getElementById("dashboard-update").innerHTML = \`<strong>SISTEMA:</strong> \${json.dashboardUpdatedAt}\`;
       
       const percent = json.actasContabilizadas || 0;
+      const summary = json.summary || {};
+      
       const progressFill = document.getElementById("progress-fill");
       const actasPercentEl = document.getElementById("actas-percent");
+      
+      document.getElementById("jee-enviadas").textContent = formatNumber(summary.enviadasJee);
+      document.getElementById("jee-enviadas-pct").textContent = summary.actasEnviadasJee || "0.000";
+      document.getElementById("jee-pendientes").textContent = formatNumber(summary.pendientesJee);
+      document.getElementById("jee-pendientes-pct").textContent = summary.actasPendientesJee || "0.000";
       
       let keikoInc = 0;
       let jpInc = 0;
@@ -1144,18 +1155,19 @@ function htmlPage() {
         });
       }
 
-      // DETECCIÓN DE CAMBIO REAL EN LA ONPE (por timestamp de la ONPE, NO del sistema)
-      const currentOnpeTs = json.onpeUpdatedAt || null;
-      let onpeChanged = false;
+      // DETECCIÓN DE CAMBIO REAL EN DATOS (votos o actas, ignorando solo cambios de fecha)
+      let dataChanged = false;
       
-      if (lastOnpeTimestamp !== null && currentOnpeTs !== null && currentOnpeTs !== lastOnpeTimestamp) {
-        onpeChanged = true;
-        console.log('🔔 ¡ONPE ACTUALIZÓ! Anterior:', lastOnpeTimestamp, '→ Nuevo:', currentOnpeTs);
+      if (lastKnownActas !== -1) {
+        if (keikoInc > 0 || jpInc > 0 || percent !== lastKnownActas) {
+          dataChanged = true;
+          console.log('🔔 ¡CAMBIO REAL EN DATOS! Keiko: +' + keikoInc + ' | JP: +' + jpInc + ' | Actas:', lastKnownActas, '→', percent);
+        }
       }
       
       progressFill.style.width = percent + "%";
       
-      if (onpeChanged) {
+      if (dataChanged) {
         actasPercentEl.classList.remove("blink");
         void actasPercentEl.offsetWidth; 
         actasPercentEl.classList.add("blink");
@@ -1176,7 +1188,6 @@ function htmlPage() {
       }
       
       actasPercentEl.textContent = percent + "%";
-      lastOnpeTimestamp = currentOnpeTs;
       lastKnownActas = percent;
       rawHistory = json.history || [];
 
@@ -1275,7 +1286,11 @@ function htmlPage() {
           return \`
             <div class="card" style="border-top: 4px solid \${color};">
               <h3 style="margin-top:0; font-size: 20px; font-weight: 800;">\${title}</h3>
-              <div style="font-size: 14px; color: #64748b; margin-bottom: 16px;">Actas contabilizadas: <strong>\${actas}%</strong></div>
+              <div style="font-size: 14px; color: #1e293b; margin-bottom: 6px;">Actas contabilizadas: <strong style="color: var(--accent); font-size: 15px;">\${actas}%</strong></div>
+              <div style="display: flex; gap: 16px; font-size: 12.5px; color: #64748b; margin-bottom: 20px;">
+                 <div>Enviadas JEE: <strong style="color: #475569">\${formatNumber(tot.enviadasJee)}</strong> (\${tot.actasEnviadasJee || '0.000'}%)</div>
+                 <div>Pendientes: <strong style="color: #475569">\${formatNumber(tot.pendientesJee)}</strong> (\${tot.actasPendientesJee || '0.000'}%)</div>
+              </div>
               <div style="display:flex; justify-content: space-between; margin-bottom: 12px; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px;">
                 <span style="font-weight:700; color: #10b981;">\${name1}</span>
                 <div style="text-align: right;">
