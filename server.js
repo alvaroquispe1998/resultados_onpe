@@ -4,6 +4,7 @@ const { URL } = require("url");
 
 const PORT = process.env.PORT || 3000;
 const fs = require("fs");
+const path = require("path");
 const HISTORY_FILE = "history.json";
 
 // Almacén de historial en memoria
@@ -13,23 +14,23 @@ let lastTotalVotes = -1;
 
 function updateHistory(currentData, actasPercent, summaryData) {
   if (!currentData || currentData.length === 0) return;
-  
+
   const totalVotes = currentData.reduce((acc, item) => acc + (item.totalVotosValidos || 0), 0);
-  
+
   const norm = (v) => String(v || "0").replace(/%/g, "").trim();
   const cleanPct = norm(actasPercent);
   const totalV = parseInt(totalVotes || 0);
-  
+
   if (parseFloat(cleanPct) <= 0) return;
 
   // FORMATO DE HORA MANUAL ROBUSTO (HH:mm:ss p. m.)
-  const d = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Lima"}));
+  const d = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Lima" }));
   let h = d.getHours();
   const m = String(d.getMinutes()).padStart(2, "0");
   const s = String(d.getSeconds()).padStart(2, "0");
   const ampm = h >= 12 ? "p. m." : "a. m.";
   h = h % 12;
-  h = h ? h : 12; 
+  h = h ? h : 12;
   const hh = String(h).padStart(2, "0");
   const timeStr = `${hh}:${m}:${s} ${ampm}`;
 
@@ -58,7 +59,7 @@ function updateHistory(currentData, actasPercent, summaryData) {
   lastActasPercent = cleanPct + "%";
   lastTotalVotes = totalV;
 
-  
+
   if (historySnapshots.length > 2000) historySnapshots.shift();
 
   try {
@@ -100,7 +101,7 @@ try {
     });
 
     historySnapshots = Array.from(mapSnaps.values());
-    
+
     if (historySnapshots.length > 0) {
       const last = historySnapshots[historySnapshots.length - 1];
       lastActasPercent = last.actasPercent;
@@ -119,6 +120,11 @@ const ONPE_RESULTS_URL =
 
 const ONPE_SUMMARY_URL =
   "https://resultadosegundavuelta.onpe.gob.pe/presentacion-backend/resumen-general/totales?idEleccion=10&tipoFiltro=eleccion";
+
+const PERU_PARTICIPANTES_URL = "https://resultadosegundavuelta.onpe.gob.pe/presentacion-backend/resumen-general/participantes?idEleccion=10&tipoFiltro=ambito_geografico&idAmbitoGeografico=1";
+const PERU_TOTALES_URL = "https://resultadosegundavuelta.onpe.gob.pe/presentacion-backend/resumen-general/totales?idEleccion=10&tipoFiltro=ambito_geografico&idAmbitoGeografico=1";
+const EXTRANJERO_PARTICIPANTES_URL = "https://resultadosegundavuelta.onpe.gob.pe/presentacion-backend/resumen-general/participantes?idEleccion=10&tipoFiltro=ambito_geografico&idAmbitoGeografico=2";
+const EXTRANJERO_TOTALES_URL = "https://resultadosegundavuelta.onpe.gob.pe/presentacion-backend/resumen-general/totales?idEleccion=10&tipoFiltro=ambito_geografico&idAmbitoGeografico=2";
 
 function fetchFromOnpe(targetUrl) {
   return new Promise((resolve, reject) => {
@@ -565,14 +571,15 @@ function htmlPage() {
     <!-- Presidencial View -->
     <div id="view-presidencial" class="view-content active">
       <div id="cards-container" class="grid"></div>
-      <div class="others-section">
+
+      <div class="others-section" id="breakdown-section" style="margin-top: 40px; padding-top: 40px; border-top: 1px solid #e2e8f0; display: none;">
         <div class="section-header">
-          <h2>Otros Resultados</h2>
+          <h2>Desglose: Perú vs Extranjero</h2>
         </div>
-        <div id="list-container" class="list-container">
-          <div class="loading" style="padding: 40px; text-align: center;">Cargando lista...</div>
+        <div class="grid" id="breakdown-cards">
         </div>
       </div>
+      
     </div>
   </div>
 
@@ -1121,6 +1128,12 @@ function htmlPage() {
         actasPercentEl.classList.remove("blink");
         void actasPercentEl.offsetWidth; 
         actasPercentEl.classList.add("blink");
+        
+        try {
+          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+          audio.volume = 0.6;
+          audio.play().catch(e => console.log('Audio autoplay blocked:', e));
+        } catch(e) { console.log('Audio error:', e); }
       }
       actasPercentEl.textContent = percent + "%";
       lastKnownActas = percent;
@@ -1131,8 +1144,7 @@ function htmlPage() {
 
     function renderPresidencial(json) {
       const cardsCont = document.getElementById("cards-container");
-      const listCont = document.getElementById("list-container");
-      if (!cardsCont || !listCont) return;
+      if (!cardsCont) return;
 
       const top3Html = json.top3.map((item, index) => {
         const rankClass = "rank-" + (index + 1);
@@ -1141,45 +1153,107 @@ function htmlPage() {
         const isSelected = selectedCandidates.has(item.nombreAgrupacionPolitica);
         const incrementalHtml = (item.incremental > 0) ? \`<div class="incremental-tag">+\${formatNumber(item.incremental)} nuevos votos</div>\` : '';
         
+        const getCandidateImg = (name) => {
+          if (name.includes("JUNTOS POR EL PERU") || name.includes("JUNTOS POR EL PERÚ")) return "/jp.jpg";
+          if (name.includes("FUERZA POPULAR")) return "/keiko.png";
+          return "";
+        };
+        
+        const getPartyLogo = (name) => {
+          if (name.includes("JUNTOS POR EL PERU") || name.includes("JUNTOS POR EL PERÚ")) return "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0OCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iIzY1YTMwZCIgc3Ryb2tlLXdpZHRoPSI4Ii8+PHRleHQgeD0iNTAiIHk9IjY1IiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iNDgiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZGMyNjI2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5KUDwvdGV4dD48L3N2Zz4=";
+          if (name.includes("FUERZA POPULAR")) return "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0OCIgZmlsbD0iI2VhNTgwYyIvPjxwYXRoIGQ9Ik0zMCwyMCBMNDUsMjAgTDQ1LDQ1IEw2NSwyMCBMODAsMjAgTDU1LDUwIEw4NSw4MCBMNjUsODAgTDQ1LDU1IEw0NSw4MCBMMzAsODAgWiIgZmlsbD0id2hpdGUiLz48L3N2Zz4=";
+          return "";
+        };
+        
+        const candidateImg = getCandidateImg(item.nombreAgrupacionPolitica);
+        const partyLogo = getPartyLogo(item.nombreAgrupacionPolitica);
+        
+        let logoHtml = "";
+        if (candidateImg && partyLogo) {
+          logoHtml = \`
+            <div style="position: relative; margin-left: 16px; flex-shrink: 0;">
+              <img src="\${candidateImg}" style="height: 100px; width: 100px; object-fit: cover; border-radius: 50%; box-shadow: 0 8px 16px rgba(0,0,0,0.1); border: 4px solid white;">
+              <img src="\${partyLogo}" style="position: absolute; bottom: 0; right: -8px; height: 36px; width: 36px; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border: 2px solid white; background: white;">
+            </div>
+          \`;
+        }
+        
         return \`
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
               <div class="rank \${rankClass}">\${rankLabel}</div>
               <input type="checkbox" class="custom-chk" \${isSelected ? 'checked' : ''} onchange="toggleCandidate('\${escapeHtml(item.nombreAgrupacionPolitica)}', this.checked)">
             </div>
-            <div class="party-name">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
-            <div class="votos-value">\${formatNumber(item.totalVotosValidos)} <span class="votos-label">votos</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div>
+                <div class="party-name">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
+                <div class="votos-value">\${formatNumber(item.totalVotosValidos)} <span class="votos-label">votos</span></div>
+              </div>
+              \${logoHtml}
+            </div>
             \${incrementalHtml}
             <div class="card-footer">
               <div class="stat-box"><div class="stat-val">\${item.porcentajeVotosValidos}%</div><div class="stat-lbl">% Válidos</div></div>
               <div class="stat-box"><div class="stat-val">\${item.porcentajeVotosEmitidos}%</div><div class="stat-lbl">% Emitidos</div></div>
             </div>
-            <div class="diff \${item.diferenciaConAnterior < 0 ? 'minus' : ''}">
-              \${index === 0 ? '🥇 Ganando actualmente' : '📉 ' + formatDiff(item.diferenciaConAnterior) + ' vs ' + vsLabel}
+            <div style="margin-top: 20px; padding-top: 16px; border-top: 1px dashed #e2e8f0; text-align: center;">
+              <div style="display: inline-block; padding: 10px 20px; border-radius: 8px; background: \${index === 0 ? '#ecfdf5' : '#fff7ed'}; color: \${index === 0 ? '#059669' : '#ea580c'}; font-weight: 800; font-size: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); width: 100%;">
+                \${index === 0 ? '🏆 Liderando actualmente' : '📉 Abajo por ' + formatNumber(Math.abs(item.diferenciaConAnterior)) + ' votos'}
+              </div>
             </div>
             <button class="history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">📈 Evolución Individual</button>
           </div>\`;
       }).join("");
       cardsCont.innerHTML = top3Html;
 
-      const othersHtml = json.others.map((item, index) => {
-        const isSelected = selectedCandidates.has(item.nombreAgrupacionPolitica);
-        const incHtml = (item.incremental > 0) ? \`<div class="list-incremental">+\${formatNumber(item.incremental)}</div>\` : '';
-        const rank = index + 4;
-        return \`
-          <div class="list-item">
-            <div class="chk-col"><input type="checkbox" class="custom-chk" \${isSelected ? 'checked' : ''} onchange="toggleCandidate('\${escapeHtml(item.nombreAgrupacionPolitica)}', this.checked)"></div>
-            <div class="list-rank">#\${rank}</div>
-            <div class="list-party">\${escapeHtml(item.nombreAgrupacionPolitica)}</div>
-            <div class="list-candidate">\${escapeHtml(item.nombreCandidato || "---")}</div>
-            <div class="list-votes">
-              <div>\${formatNumber(item.totalVotosValidos)}</div>
-              \${incHtml}
+      // Breakdown Render
+      if (json.peru && json.extranjero) {
+        document.getElementById("breakdown-section").style.display = "block";
+        const top3NamesArr = json.top3.map(c => c.nombreAgrupacionPolitica);
+        const name1 = top3NamesArr[0];
+        const name2 = top3NamesArr[1];
+        
+        const renderScope = (title, part, tot, color) => {
+          if (!part || !tot) return '';
+          const cA = part.find(p => p.nombreAgrupacionPolitica === name1);
+          const cB = part.find(p => p.nombreAgrupacionPolitica === name2);
+          const actas = tot.actasContabilizadas || tot.porcentajeActasContabilizadas || tot.nuPorcentajeActasContabilizadas || "0.000";
+          
+          const diffVotos = (cA?.totalVotosValidos || 0) - (cB?.totalVotosValidos || 0);
+          
+          return \`
+            <div class="card" style="border-top: 4px solid \${color};">
+              <h3 style="margin-top:0; font-size: 20px; font-weight: 800;">\${title}</h3>
+              <div style="font-size: 14px; color: #64748b; margin-bottom: 16px;">Actas contabilizadas: <strong>\${actas}%</strong></div>
+              <div style="display:flex; justify-content: space-between; margin-bottom: 12px; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px;">
+                <span style="font-weight:700; color: #10b981;">\${name1}</span>
+                <div style="text-align: right;">
+                  <strong style="font-size: 18px;">\${formatNumber(cA?.totalVotosValidos)} <span style="font-size: 12px; font-weight: 400; color: #94a3b8;">votos</span></strong>
+                  <div style="font-size: 12px; font-weight: 700; color: #10b981;">\${cA?.porcentajeVotosValidos || '0.000'}% <span style="font-weight: 400; color: #94a3b8;">válidos</span></div>
+                </div>
+              </div>
+              <div style="display:flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight:700; color: #f97316;">\${name2}</span>
+                <div style="text-align: right;">
+                  <strong style="font-size: 18px;">\${formatNumber(cB?.totalVotosValidos)} <span style="font-size: 12px; font-weight: 400; color: #94a3b8;">votos</span></strong>
+                  <div style="font-size: 12px; font-weight: 700; color: #f97316;">\${cB?.porcentajeVotosValidos || '0.000'}% <span style="font-weight: 400; color: #94a3b8;">válidos</span></div>
+                </div>
+              </div>
+              
+              <div style="margin-top: 16px; padding-top: 16px; border-top: 1px dashed #e2e8f0;">
+                <div style="font-size: 13px; color: #64748b; margin-bottom: 4px;">Diferencia de votos en \${title.replace('Votos en ', '').replace('Votos ', '')}</div>
+                <div style="display: inline-block; padding: 6px 12px; border-radius: 6px; background: \${diffVotos > 0 ? '#ecfdf5' : '#fff7ed'}; color: \${diffVotos > 0 ? '#059669' : '#ea580c'}; font-weight: 700; font-size: 14px;">
+                  \${diffVotos > 0 ? '🏆 ' + name1 : '🏆 ' + name2} lidera por \${formatNumber(Math.abs(diffVotos))} votos
+                </div>
+              </div>
             </div>
-            <div class="list-btn-col"><button class="list-history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">📈</button></div>
-          </div>\`;
-      }).join("");
-      listCont.innerHTML = othersHtml;
+          \`;
+        };
+        
+        document.getElementById("breakdown-cards").innerHTML = 
+          renderScope("Votos en Perú", json.peru.participantes, json.peru.totales, "#0ea5e9") +
+          renderScope("Votos en el Extranjero", json.extranjero.participantes, json.extranjero.totales, "#8b5cf6");
+      }
     }
 
     function renderResumen(json) {
@@ -1248,100 +1322,140 @@ const server = http.createServer(async (req, res) => {
     const urlPath = req.url.split('?')[0];
     console.log(`[${new Date().toISOString()}] ${req.method} ${urlPath}`);
 
-  if (urlPath === "/" || urlPath === "/index.html") {
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(htmlPage());
-    return;
-  }
-
-  if (urlPath === "/api/results") {
-    try {
-      const [resultsJson, summaryJson] = await Promise.all([
-        fetchOnpeData(),
-        fetchOnpeSummary(),
-      ]);
-
-      if (!resultsJson || !resultsJson.success || !Array.isArray(resultsJson.data)) {
-        throw new Error("La respuesta de presidenciales no es válida");
-      }
-
-      const summaryData = summaryJson?.data || {};
-
-      // EXTRACCIÓN BLINDADA: Buscamos en todas las variantes posibles de ambos endpoints
-      const getOnpeVal = (obj, keys) => {
-        for (const k of keys) {
-          if (obj && obj[k] && obj[k] !== "0" && obj[k] !== 0) return obj[k];
-        }
-        return null;
-      };
-
-      const keysPct = ["nuPorcentajeActasContabilizadas", "nuActasContabilizadas", "actasContabilizadas", "porcentajeActasContabilizadas"];
-      const keysTs = ["feActualizacion", "fechaActualizacion"];
-
-      // Priorizamos el resumen para la cabecera, pero si falla usamos presidenciales
-      const actasPct = getOnpeVal(summaryData, keysPct) || getOnpeVal(resultsJson, keysPct) || "---";
-      const onpeTs = getOnpeVal(summaryData, keysTs) || getOnpeVal(resultsJson, keysTs) || "---";
-
-      // CUERPO: Sacamos candidatos y votos del endpoint de Presidenciales
-      const isSpecial = (name) =>
-        name === "VOTOS EN BLANCO" || name === "VOTOS NULOS" || name === "VOTOS IMPUGNADOS";
-
-      const allSorted = resultsJson.data
-        .filter((x) => typeof x.totalVotosValidos === "number")
-        .sort((a, b) => b.totalVotosValidos - a.totalVotosValidos);
-
-      const lastSessionSnapshot = historySnapshots[historySnapshots.length - 1];
-      const getIncremental = (name, currentVotos) => {
-        if (!lastSessionSnapshot) return 0;
-        const prev = lastSessionSnapshot.results.find(r => r.name === name);
-        return prev ? currentVotos - prev.votos : 0;
-      };
-
-      const partiesSorted = allSorted.filter(x => !isSpecial(x.nombreAgrupacionPolitica));
-      const top3Parties = partiesSorted.slice(0, 3);
-      const top3 = top3Parties.map((item, index) => ({
-        ...item,
-        incremental: getIncremental(item.nombreAgrupacionPolitica, item.totalVotosValidos),
-        diferenciaConAnterior: index === 0 ? 0 : item.totalVotosValidos - top3Parties[index - 1].totalVotosValidos,
-      }));
-
-      const top3Names = new Set(top3.map(x => x.nombreAgrupacionPolitica));
-      const remainingOthers = allSorted.filter(x => !top3Names.has(x.nombreAgrupacionPolitica));
-      
-      const remainingParties = remainingOthers.filter(x => !isSpecial(x.nombreAgrupacionPolitica));
-      const specialEntries = remainingOthers.filter(x => isSpecial(x.nombreAgrupacionPolitica));
-
-      const others = [...remainingParties, ...specialEntries].map(item => ({
-        ...item,
-        incremental: getIncremental(item.nombreAgrupacionPolitica, item.totalVotosValidos)
-      }));
-
-      updateHistory(allSorted, actasPct, summaryData);
-
-      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(
-        JSON.stringify({
-          success: true,
-          dashboardUpdatedAt: new Date().toLocaleString("es-PE", { timeZone: "America/Lima" }),
-          onpeUpdatedAt: onpeTs,
-          top3,
-          others,
-          history: historySnapshots,
-          actasContabilizadas: actasPct,
-          summary: { ...summaryData, detalleVotosProcessed: allSorted }
-        })
-      );
-    } catch (error) {
-      res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(
-        JSON.stringify({
-          success: false,
-          message: error.message,
-        })
-      );
+    if (urlPath === "/" || urlPath === "/index.html") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(htmlPage());
+      return;
     }
-    return;
-  }
+
+    if (urlPath === "/jp.jpg") {
+      try {
+        const img = fs.readFileSync(path.join(__dirname, "jp.jpg"));
+        res.writeHead(200, { "Content-Type": "image/jpeg" });
+        res.end(img);
+        return;
+      } catch (err) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+    }
+
+    if (urlPath === "/keiko.png") {
+      try {
+        const img = fs.readFileSync(path.join(__dirname, "keiko.png"));
+        res.writeHead(200, { "Content-Type": "image/png" });
+        res.end(img);
+        return;
+      } catch (err) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+    }
+
+    if (urlPath === "/api/results") {
+      try {
+        const [resultsJson, summaryJson, peruPart, peruTot, extPart, extTot] = await Promise.all([
+          fetchOnpeData(),
+          fetchOnpeSummary(),
+          fetchFromOnpe(PERU_PARTICIPANTES_URL),
+          fetchFromOnpe(PERU_TOTALES_URL),
+          fetchFromOnpe(EXTRANJERO_PARTICIPANTES_URL),
+          fetchFromOnpe(EXTRANJERO_TOTALES_URL)
+        ]);
+
+        if (!resultsJson || !resultsJson.success || !Array.isArray(resultsJson.data)) {
+          throw new Error("La respuesta de presidenciales no es válida");
+        }
+
+        const summaryData = summaryJson?.data || {};
+
+        // EXTRACCIÓN BLINDADA: Buscamos en todas las variantes posibles de ambos endpoints
+        const getOnpeVal = (obj, keys) => {
+          for (const k of keys) {
+            if (obj && obj[k] && obj[k] !== "0" && obj[k] !== 0) return obj[k];
+          }
+          return null;
+        };
+
+        const keysPct = ["nuPorcentajeActasContabilizadas", "nuActasContabilizadas", "actasContabilizadas", "porcentajeActasContabilizadas"];
+        const keysTs = ["feActualizacion", "fechaActualizacion"];
+
+        // Priorizamos el resumen para la cabecera, pero si falla usamos presidenciales
+        const actasPct = getOnpeVal(summaryData, keysPct) || getOnpeVal(resultsJson, keysPct) || "---";
+        const onpeTs = getOnpeVal(summaryData, keysTs) || getOnpeVal(resultsJson, keysTs) || "---";
+
+        // CUERPO: Sacamos candidatos y votos del endpoint de Presidenciales
+        const isSpecial = (name) =>
+          name === "VOTOS EN BLANCO" || name === "VOTOS NULOS" || name === "VOTOS IMPUGNADOS";
+
+        const allSorted = resultsJson.data
+          .filter((x) => typeof x.totalVotosValidos === "number")
+          .sort((a, b) => b.totalVotosValidos - a.totalVotosValidos);
+
+        const getIncremental = (name, currentVotos) => {
+          if (historySnapshots.length < 2) return 0;
+          const last = historySnapshots[historySnapshots.length - 1];
+          const prev = historySnapshots[historySnapshots.length - 2];
+
+          const lastV = last.results.find(r => r.name === name)?.votos || 0;
+          const prevV = prev.results.find(r => r.name === name)?.votos || 0;
+
+          if (currentVotos === lastV) {
+            return lastV - prevV;
+          } else {
+            return currentVotos - lastV;
+          }
+        };
+
+        const partiesSorted = allSorted.filter(x => !isSpecial(x.nombreAgrupacionPolitica));
+        const top3Parties = partiesSorted.slice(0, 3);
+        const top3 = top3Parties.map((item, index) => ({
+          ...item,
+          incremental: getIncremental(item.nombreAgrupacionPolitica, item.totalVotosValidos),
+          diferenciaConAnterior: index === 0 ? 0 : item.totalVotosValidos - top3Parties[index - 1].totalVotosValidos,
+        }));
+
+        const top3Names = new Set(top3.map(x => x.nombreAgrupacionPolitica));
+        const remainingOthers = allSorted.filter(x => !top3Names.has(x.nombreAgrupacionPolitica));
+
+        const remainingParties = remainingOthers.filter(x => !isSpecial(x.nombreAgrupacionPolitica));
+        const specialEntries = remainingOthers.filter(x => isSpecial(x.nombreAgrupacionPolitica));
+
+        const others = [...remainingParties, ...specialEntries].map(item => ({
+          ...item,
+          incremental: getIncremental(item.nombreAgrupacionPolitica, item.totalVotosValidos)
+        }));
+
+        updateHistory(allSorted, actasPct, summaryData);
+
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            dashboardUpdatedAt: new Date().toLocaleString("es-PE", { timeZone: "America/Lima" }),
+            onpeUpdatedAt: onpeTs,
+            top3,
+            others,
+            history: historySnapshots,
+            actasContabilizadas: actasPct,
+            summary: { ...summaryData, detalleVotosProcessed: allSorted },
+            peru: { participantes: peruPart?.data, totales: peruTot?.data },
+            extranjero: { participantes: extPart?.data, totales: extTot?.data }
+          })
+        );
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(
+          JSON.stringify({
+            success: false,
+            message: error.message,
+          })
+        );
+      }
+      return;
+    }
 
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Not found");
