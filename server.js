@@ -227,9 +227,10 @@ function htmlPage() {
     }
 
     .wrap {
-      max-width: 1200px;
+      width: 100%;
+      max-width: 1800px;
       margin: 0 auto;
-      padding: 40px 20px;
+      padding: 40px 2%;
     }
 
     header {
@@ -312,9 +313,22 @@ function htmlPage() {
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 32px;
-      margin-bottom: 60px;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+    
+    .main-layout { display: flex; gap: 40px; align-items: flex-start; }
+    .main-col { flex: 1; min-width: 0; }
+    .side-col { width: 420px; flex-shrink: 0; display: flex; flex-direction: column; gap: 24px; margin-top: 180px; }
+    
+    @media (max-width: 1200px) {
+      .main-layout { flex-direction: column; }
+      .side-col { width: 100%; margin-top: 0; display: grid; grid-template-columns: repeat(2, 1fr); }
+      .grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 768px) {
+      .grid { grid-template-columns: 1fr; }
     }
 
     .card {
@@ -543,9 +557,10 @@ function htmlPage() {
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <div class="header-top">
+  <div class="wrap main-layout">
+    <div class="main-col">
+      <header>
+        <div class="header-top">
         <div class="title-group">
           <h1>Dashboard Electoral ONPE</h1>
           <div style="display: flex; gap: 16px; margin-top: 8px; margin-bottom: 12px;">
@@ -571,15 +586,10 @@ function htmlPage() {
     <!-- Presidencial View -->
     <div id="view-presidencial" class="view-content active">
       <div id="cards-container" class="grid"></div>
-
-      <div class="others-section" id="breakdown-section" style="margin-top: 40px; padding-top: 40px; border-top: 1px solid #e2e8f0; display: none;">
-        <div class="section-header">
-          <h2>Desglose: Perú vs Extranjero</h2>
-        </div>
-        <div class="grid" id="breakdown-cards">
-        </div>
-      </div>
-      
+    </div>
+    </div>
+    
+    <div class="side-col" id="sidebar-container">
     </div>
   </div>
 
@@ -1123,14 +1133,36 @@ function htmlPage() {
       const progressFill = document.getElementById("progress-fill");
       const actasPercentEl = document.getElementById("actas-percent");
       
+      let keikoInc = 0;
+      let jpInc = 0;
+      
+      if (json.top3) {
+        json.top3.forEach(c => {
+          if (c.nombreAgrupacionPolitica.includes("FUERZA POPULAR")) keikoInc = c.incremental || 0;
+          if (c.nombreAgrupacionPolitica.includes("JUNTOS POR EL PERU") || c.nombreAgrupacionPolitica.includes("JUNTOS POR EL PERÚ")) jpInc = c.incremental || 0;
+        });
+      }
+
+      let audioUrl = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'; // Campana por defecto
+      let playSound = false;
+
+      if (lastKnownActas !== -1 && (lastKnownActas !== percent || keikoInc > 0 || jpInc > 0)) {
+        playSound = true;
+        if (keikoInc > jpInc) {
+          audioUrl = 'https://assets.mixkit.co/active_storage/sfx/2867/2867-preview.mp3'; // Éxito (Keiko sube más)
+        } else if (jpInc > keikoInc) {
+          audioUrl = 'https://assets.mixkit.co/active_storage/sfx/2955/2955-preview.mp3'; // Negativo (JP sube más)
+        }
+      }
+      
       progressFill.style.width = percent + "%";
-      if (lastKnownActas !== -1 && lastKnownActas !== percent) {
+      if (playSound) {
         actasPercentEl.classList.remove("blink");
         void actasPercentEl.offsetWidth; 
         actasPercentEl.classList.add("blink");
         
         try {
-          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+          const audio = new Audio(audioUrl);
           audio.volume = 0.6;
           audio.play().catch(e => console.log('Audio autoplay blocked:', e));
         } catch(e) { console.log('Audio error:', e); }
@@ -1140,6 +1172,19 @@ function htmlPage() {
       rawHistory = json.history || [];
 
       renderPresidencial(json);
+    }
+
+    function testSound(type) {
+      try {
+        let url = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+        if (type === 'keiko') url = 'https://assets.mixkit.co/active_storage/sfx/2867/2867-preview.mp3';
+        else if (type === 'jp') url = 'https://assets.mixkit.co/active_storage/sfx/2955/2955-preview.mp3';
+        const audio = new Audio(url);
+        audio.volume = 0.6;
+        audio.play().catch(e => alert('El navegador bloqueó el audio (haz clic en algún lado primero): ' + e));
+      } catch(e) {
+        console.error('Audio error:', e);
+      }
     }
 
     function renderPresidencial(json) {
@@ -1170,8 +1215,9 @@ function htmlPage() {
         
         let logoHtml = "";
         if (candidateImg && partyLogo) {
+          const soundType = item.nombreAgrupacionPolitica.includes("FUERZA POPULAR") ? 'keiko' : 'jp';
           logoHtml = \`
-            <div style="position: relative; margin-left: 16px; flex-shrink: 0;">
+            <div style="position: relative; margin-left: 16px; flex-shrink: 0; cursor: pointer; transition: transform 0.2s;" onclick="testSound('\${soundType}')" title="Clic para probar sonido de alerta" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
               <img src="\${candidateImg}" style="height: 100px; width: 100px; object-fit: cover; border-radius: 50%; box-shadow: 0 8px 16px rgba(0,0,0,0.1); border: 4px solid white;">
               <img src="\${partyLogo}" style="position: absolute; bottom: 0; right: -8px; height: 36px; width: 36px; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border: 2px solid white; background: white;">
             </div>
@@ -1204,11 +1250,8 @@ function htmlPage() {
             <button class="history-btn" onclick="openHistory('\${escapeHtml(item.nombreAgrupacionPolitica)}')">📈 Evolución Individual</button>
           </div>\`;
       }).join("");
-      cardsCont.innerHTML = top3Html;
-
       // Breakdown Render
       if (json.peru && json.extranjero) {
-        document.getElementById("breakdown-section").style.display = "block";
         const top3NamesArr = json.top3.map(c => c.nombreAgrupacionPolitica);
         const name1 = top3NamesArr[0];
         const name2 = top3NamesArr[1];
@@ -1250,9 +1293,14 @@ function htmlPage() {
           \`;
         };
         
-        document.getElementById("breakdown-cards").innerHTML = 
-          renderScope("Votos en Perú", json.peru.participantes, json.peru.totales, "#0ea5e9") +
+        const breakdownHtml = renderScope("Votos en Perú", json.peru.participantes, json.peru.totales, "#0ea5e9") +
           renderScope("Votos en el Extranjero", json.extranjero.participantes, json.extranjero.totales, "#8b5cf6");
+          
+        cardsCont.innerHTML = top3Html;
+        const sidebar = document.getElementById("sidebar-container");
+        if (sidebar) sidebar.innerHTML = breakdownHtml;
+      } else {
+        cardsCont.innerHTML = top3Html;
       }
     }
 
