@@ -634,6 +634,7 @@ function htmlPage() {
     let selectedCandidates = new Set();
     let myChart = null;
     let lastKnownActas = -1;
+    let lastOnpeTimestamp = null; // Track ONPE's own update timestamp
 
     function formatNumber(v) { return new Intl.NumberFormat("es-PE").format(v || 0); }
     function formatDiff(v) { return (v >= 0 ? "+" : "") + formatNumber(v); }
@@ -1143,31 +1144,39 @@ function htmlPage() {
         });
       }
 
-      let audioUrl = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'; // Campana por defecto
-      let playSound = false;
-
-      if (lastKnownActas !== -1 && (lastKnownActas !== percent || keikoInc > 0 || jpInc > 0)) {
-        playSound = true;
-        if (keikoInc > jpInc) {
-          audioUrl = 'https://assets.mixkit.co/active_storage/sfx/2867/2867-preview.mp3'; // Éxito (Keiko sube más)
-        } else if (jpInc > keikoInc) {
-          audioUrl = 'https://assets.mixkit.co/active_storage/sfx/2955/2955-preview.mp3'; // Negativo (JP sube más)
-        }
+      // DETECCIÓN DE CAMBIO REAL EN LA ONPE (por timestamp de la ONPE, NO del sistema)
+      const currentOnpeTs = json.onpeUpdatedAt || null;
+      let onpeChanged = false;
+      
+      if (lastOnpeTimestamp !== null && currentOnpeTs !== null && currentOnpeTs !== lastOnpeTimestamp) {
+        onpeChanged = true;
+        console.log('🔔 ¡ONPE ACTUALIZÓ! Anterior:', lastOnpeTimestamp, '→ Nuevo:', currentOnpeTs);
       }
       
       progressFill.style.width = percent + "%";
-      if (playSound) {
+      
+      if (onpeChanged) {
         actasPercentEl.classList.remove("blink");
         void actasPercentEl.offsetWidth; 
         actasPercentEl.classList.add("blink");
         
+        // Elegir sonido según quién subió más
+        let audioUrl = '/keiko.mp3'; // Por defecto: campana positiva
+        if (jpInc > keikoInc) {
+          audioUrl = '/jp.mp3'; // JP subió más: sonido negativo
+        }
+        
         try {
           const audio = new Audio(audioUrl);
-          audio.volume = 0.6;
+          audio.volume = 0.7;
           audio.play().catch(e => console.log('Audio autoplay blocked:', e));
         } catch(e) { console.log('Audio error:', e); }
+        
+        console.log('🔊 Sonido:', audioUrl, '| Keiko +' + keikoInc, '| JP +' + jpInc);
       }
+      
       actasPercentEl.textContent = percent + "%";
+      lastOnpeTimestamp = currentOnpeTs;
       lastKnownActas = percent;
       rawHistory = json.history || [];
 
@@ -1176,12 +1185,11 @@ function htmlPage() {
 
     function testSound(type) {
       try {
-        let url = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
-        if (type === 'keiko') url = 'https://assets.mixkit.co/active_storage/sfx/2867/2867-preview.mp3';
-        else if (type === 'jp') url = 'https://assets.mixkit.co/active_storage/sfx/2955/2955-preview.mp3';
+        let url = '/keiko.mp3';
+        if (type === 'jp') url = '/jp.mp3';
         const audio = new Audio(url);
-        audio.volume = 0.6;
-        audio.play().catch(e => alert('El navegador bloqueó el audio (haz clic en algún lado primero): ' + e));
+        audio.volume = 0.7;
+        audio.play().catch(e => alert('El navegador bloqueó el audio. Haz clic en cualquier parte de la página primero y luego intenta de nuevo.'));
       } catch(e) {
         console.error('Audio error:', e);
       }
@@ -1394,6 +1402,32 @@ const server = http.createServer(async (req, res) => {
         const img = fs.readFileSync(path.join(__dirname, "keiko.png"));
         res.writeHead(200, { "Content-Type": "image/png" });
         res.end(img);
+        return;
+      } catch (err) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+    }
+
+    if (urlPath === "/jp.mp3") {
+      try {
+        const audio = fs.readFileSync(path.join(__dirname, "jp.mp3"));
+        res.writeHead(200, { "Content-Type": "audio/mpeg" });
+        res.end(audio);
+        return;
+      } catch (err) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+    }
+
+    if (urlPath === "/keiko.mp3") {
+      try {
+        const audio = fs.readFileSync(path.join(__dirname, "keiko.mp3"));
+        res.writeHead(200, { "Content-Type": "audio/mpeg" });
+        res.end(audio);
         return;
       } catch (err) {
         res.writeHead(404);
