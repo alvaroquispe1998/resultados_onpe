@@ -576,7 +576,7 @@ function htmlPage() {
 
       <div class="progress-container">
         <div class="progress-header">
-          <span>Actas Contabilizadas</span>
+          <span>Actas Contabilizadas <strong id="actas-contabilizadas-count" style="color: var(--accent); margin-left: 8px;">...</strong></span>
           <span id="actas-percent">0%</span>
         </div>
         <div class="progress-bar-bg"><div id="progress-fill" class="progress-bar-fill"></div></div>
@@ -638,6 +638,7 @@ function htmlPage() {
     let selectedCandidates = new Set();
     let myChart = null;
     let lastKnownActas = -1;
+    let lastTotalVotos = -1;
     let lastOnpeTimestamp = null; // Track ONPE's own update timestamp
 
     function formatNumber(v) { return new Intl.NumberFormat("es-PE").format(v || 0); }
@@ -1140,6 +1141,7 @@ function htmlPage() {
       const progressFill = document.getElementById("progress-fill");
       const actasPercentEl = document.getElementById("actas-percent");
       
+      document.getElementById("actas-contabilizadas-count").textContent = formatNumber(summary.contabilizadas);
       document.getElementById("jee-enviadas").textContent = formatNumber(summary.enviadasJee);
       document.getElementById("jee-enviadas-pct").textContent = summary.actasEnviadasJee || "0.000";
       document.getElementById("jee-pendientes").textContent = formatNumber(summary.pendientesJee);
@@ -1147,6 +1149,7 @@ function htmlPage() {
       
       let keikoInc = 0;
       let jpInc = 0;
+      let currentTotalVotos = summary.totalVotosValidos || 0;
       
       if (json.top3) {
         json.top3.forEach(c => {
@@ -1158,10 +1161,10 @@ function htmlPage() {
       // DETECCIÓN DE CAMBIO REAL EN DATOS (votos o actas, ignorando solo cambios de fecha)
       let dataChanged = false;
       
-      if (lastKnownActas !== -1) {
-        if (keikoInc > 0 || jpInc > 0 || percent !== lastKnownActas) {
+      if (lastKnownActas !== -1 && lastTotalVotos !== -1) {
+        if (currentTotalVotos !== lastTotalVotos || percent !== lastKnownActas) {
           dataChanged = true;
-          console.log('🔔 ¡CAMBIO REAL EN DATOS! Keiko: +' + keikoInc + ' | JP: +' + jpInc + ' | Actas:', lastKnownActas, '→', percent);
+          console.log('🔔 ¡CAMBIO REAL EN DATOS! Total Votos:', lastTotalVotos, '→', currentTotalVotos, '| Actas:', lastKnownActas, '→', percent);
         }
       }
       
@@ -1189,6 +1192,7 @@ function htmlPage() {
       
       actasPercentEl.textContent = percent + "%";
       lastKnownActas = percent;
+      lastTotalVotos = currentTotalVotos;
       rawHistory = json.history || [];
 
       renderPresidencial(json);
