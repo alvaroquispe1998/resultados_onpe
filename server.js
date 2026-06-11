@@ -933,6 +933,14 @@ function htmlPage() {
       const c1Name = currentDataGlobal.top3[0].nombreAgrupacionPolitica;
       const c2Name = currentDataGlobal.top3[1].nombreAgrupacionPolitica;
       
+      const getPartyColor = (name) => {
+          if (name.includes("FUERZA POPULAR")) return '#f97316';
+          if (name.includes("JUNTOS POR EL PERU") || name.includes("JUNTOS POR EL PERÚ")) return '#10b981';
+          return '#0ea5e9';
+      };
+      const c1Color = getPartyColor(c1Name);
+      const c2Color = getPartyColor(c2Name);
+
       title.textContent = "Evolución y Brecha: " + c1Name + " vs " + c2Name;
       
       const labels = rawHistory.map(s => s.timestamp);
@@ -964,16 +972,16 @@ function htmlPage() {
         {
           label: c1Name + " (Nuevos Votos)",
           data: data1,
-          borderColor: '#0ea5e9',
-          backgroundColor: '#0ea5e922',
+          borderColor: c1Color,
+          backgroundColor: c1Color + '22',
           tension: 0.2,
           yAxisID: 'y'
         },
         {
           label: c2Name + " (Nuevos Votos)",
           data: data2,
-          borderColor: '#f97316',
-          backgroundColor: '#f9731622',
+          borderColor: c2Color,
+          backgroundColor: c2Color + '22',
           tension: 0.2,
           yAxisID: 'y'
         },
@@ -1247,6 +1255,9 @@ function htmlPage() {
           \`;
         }
         
+        const pColor = item.nombreAgrupacionPolitica.includes("FUERZA POPULAR") ? '#ea580c' : (item.nombreAgrupacionPolitica.includes("JUNTOS POR EL PERU") || item.nombreAgrupacionPolitica.includes("JUNTOS POR EL PERÚ") ? '#059669' : '#0ea5e9');
+        const pBg = item.nombreAgrupacionPolitica.includes("FUERZA POPULAR") ? '#fff7ed' : (item.nombreAgrupacionPolitica.includes("JUNTOS POR EL PERU") || item.nombreAgrupacionPolitica.includes("JUNTOS POR EL PERÚ") ? '#ecfdf5' : '#f0f9ff');
+
         return \`
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -1266,7 +1277,7 @@ function htmlPage() {
               <div class="stat-box"><div class="stat-val">\${item.porcentajeVotosEmitidos}%</div><div class="stat-lbl">% Emitidos</div></div>
             </div>
             <div style="margin-top: 20px; padding-top: 16px; border-top: 1px dashed #e2e8f0; text-align: center;">
-              <div style="display: inline-block; padding: 10px 20px; border-radius: 8px; background: \${index === 0 ? '#ecfdf5' : '#fff7ed'}; color: \${index === 0 ? '#059669' : '#ea580c'}; font-weight: 800; font-size: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); width: 100%;">
+              <div style="display: inline-block; padding: 10px 20px; border-radius: 8px; background: \${pBg}; color: \${pColor}; font-weight: 800; font-size: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); width: 100%;">
                 \${index === 0 ? '🏆 Liderando actualmente' : '📉 Abajo por ' + formatNumber(Math.abs(item.diferenciaConAnterior)) + ' votos'}
               </div>
             </div>
@@ -1286,6 +1297,21 @@ function htmlPage() {
           const actas = tot.actasContabilizadas || tot.porcentajeActasContabilizadas || tot.nuPorcentajeActasContabilizadas || "0.000";
           
           const diffVotos = (cA?.totalVotosValidos || 0) - (cB?.totalVotosValidos || 0);
+
+          const getPartyColor = (name) => {
+            if (name.includes("FUERZA POPULAR")) return '#f97316';
+            if (name.includes("JUNTOS POR EL PERU") || name.includes("JUNTOS POR EL PERÚ")) return '#10b981';
+            return '#0ea5e9';
+          };
+          const getBgColor = (name) => {
+            if (name.includes("FUERZA POPULAR")) return '#fff7ed';
+            if (name.includes("JUNTOS POR EL PERU") || name.includes("JUNTOS POR EL PERÚ")) return '#ecfdf5';
+            return '#f0f9ff';
+          };
+          const color1 = getPartyColor(name1);
+          const color2 = getPartyColor(name2);
+          const bg1 = getBgColor(name1);
+          const bg2 = getBgColor(name2);
           
           return \`
             <div class="card" style="border-top: 4px solid \${color};">
@@ -1296,23 +1322,23 @@ function htmlPage() {
                  <div>Pendientes: <strong style="color: #475569">\${formatNumber(tot.pendientesJee)}</strong> (\${tot.actasPendientesJee || '0.000'}%)</div>
               </div>
               <div style="display:flex; justify-content: space-between; margin-bottom: 12px; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px;">
-                <span style="font-weight:700; color: #10b981;">\${name1}</span>
+                <span style="font-weight:700; color: \${color1};">\${name1}</span>
                 <div style="text-align: right;">
                   <strong style="font-size: 18px;">\${formatNumber(cA?.totalVotosValidos)} <span style="font-size: 12px; font-weight: 400; color: #94a3b8;">votos</span></strong>
-                  <div style="font-size: 12px; font-weight: 700; color: #10b981;">\${cA?.porcentajeVotosValidos || '0.000'}% <span style="font-weight: 400; color: #94a3b8;">válidos</span></div>
+                  <div style="font-size: 12px; font-weight: 700; color: \${color1};">\${cA?.porcentajeVotosValidos || '0.000'}% <span style="font-weight: 400; color: #94a3b8;">válidos</span></div>
                 </div>
               </div>
               <div style="display:flex; justify-content: space-between; align-items: center;">
-                <span style="font-weight:700; color: #f97316;">\${name2}</span>
+                <span style="font-weight:700; color: \${color2};">\${name2}</span>
                 <div style="text-align: right;">
                   <strong style="font-size: 18px;">\${formatNumber(cB?.totalVotosValidos)} <span style="font-size: 12px; font-weight: 400; color: #94a3b8;">votos</span></strong>
-                  <div style="font-size: 12px; font-weight: 700; color: #f97316;">\${cB?.porcentajeVotosValidos || '0.000'}% <span style="font-weight: 400; color: #94a3b8;">válidos</span></div>
+                  <div style="font-size: 12px; font-weight: 700; color: \${color2};">\${cB?.porcentajeVotosValidos || '0.000'}% <span style="font-weight: 400; color: #94a3b8;">válidos</span></div>
                 </div>
               </div>
               
               <div style="margin-top: 16px; padding-top: 16px; border-top: 1px dashed #e2e8f0;">
                 <div style="font-size: 13px; color: #64748b; margin-bottom: 4px;">Diferencia de votos en \${title.replace('Votos en ', '').replace('Votos ', '')}</div>
-                <div style="display: inline-block; padding: 6px 12px; border-radius: 6px; background: \${diffVotos > 0 ? '#ecfdf5' : '#fff7ed'}; color: \${diffVotos > 0 ? '#059669' : '#ea580c'}; font-weight: 700; font-size: 14px;">
+                <div style="display: inline-block; padding: 6px 12px; border-radius: 6px; background: \${diffVotos > 0 ? bg1 : bg2}; color: \${diffVotos > 0 ? color1 : color2}; font-weight: 700; font-size: 14px;">
                   \${diffVotos > 0 ? '🏆 ' + name1 : '🏆 ' + name2} lidera por \${formatNumber(Math.abs(diffVotos))} votos
                 </div>
               </div>
